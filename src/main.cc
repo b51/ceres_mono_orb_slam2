@@ -48,6 +48,8 @@ int main(int argc, char* argv[]) {
   FLAGS_logtostderr = true;
   FLAGS_colorlogtostderr = true;
 
+  if (argc < 2)
+    LOG(FATAL) << argv[0] << " config.yaml imgs_dir";
   std::vector<std::string> string_image_filenames;
   std::vector<double> timestamps;
   std::string string_file = std::string(argv[3]) + "/rgb.txt";
