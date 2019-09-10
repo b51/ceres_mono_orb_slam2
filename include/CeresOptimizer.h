@@ -1,0 +1,137 @@
+/*************************************************************************
+ *
+ *              Author: b51
+ *                Mail: b51live@gmail.com
+ *            FileName: CeresOptimizer.h
+ *
+ *          Created On: Sat 07 Sep 2019 05:12:19 PM CST
+ *     Licensed under The MIT License [see LICENSE for details]
+ *
+ ************************************************************************/
+
+#ifndef CERES_OPTIMIZER_H_
+#define CERES_OPTIMIZER_H_
+
+#include <ceres/autodiff_cost_function.h>
+#include <ceres/ceres.h>
+#include <glog/logging.h>
+#include <Eigen/Core>
+#include <algorithm>
+
+#include "Frame.h"
+#include "KeyFrame.h"
+#include "LoopClosing.h"
+#include "Map.h"
+#include "MapPoint.h"
+
+namespace ORB_SLAM2 {
+
+// Computes the error term for two poses that have a relative pose measurement
+// between them. Let the hat variables be the measurement. We have two poses x_a
+// and x_b. Through sensor measurements we can measure the transformation of
+// frame B w.r.t frame A denoted as t_ab_hat. We can compute an error metric
+// between the current estimate of the poses and the measurement.
+//
+// In this formulation, we have chosen to represent the rigid transformation as
+// a Hamiltonian quaternion, q, and position, p. The quaternion ordering is
+// [x, y, z, w].
+
+// The estimated measurement is:
+//      t_ab = [ p_ab ]  = [ R(q_a)^T * (p_b - p_a) ]
+//             [ q_ab ]    [ q_a^{-1] * q_b         ]
+//
+// where ^{-1} denotes the inverse and R(q) is the rotation matrix for the
+// quaternion. Now we can compute an error metric between the estimated and
+// measurement transformation. For the orientation error, we will use the
+// standard multiplicative error resulting in:
+//
+//   error = [ p_ab - \hat{p}_ab                 ]
+//           [ 2.0 * Vec(q_ab * \hat{q}_ab^{-1}) ]
+//
+// where Vec(*) returns the vector (imaginary) part of the quaternion. Since
+// the measurement has an uncertainty associated with how accurate it is, we
+// will weight the errors by the square root of the measurement information
+// matrix:
+//
+//   residuals = I^{1/2) * error
+// where I is the information matrix which is the inverse of the covariance.
+struct Pose3d {
+  Eigen::Vector3d p;
+  Eigen::Quaterniond q;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
+class PoseGraph3dErrorTerm {
+ public:
+  PoseGraph3dErrorTerm(const Eigen::Matrix3d& K,
+                       const Eigen::Vector2d& observation,
+                       const Eigen::Matrix2d& sqrt_information)
+      : K_(K), observation_(observation), sqrt_information_(sqrt_information) {}
+
+  template <typename T>
+  bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
+                  const T* const p_b_ptr, T* residuals_ptr) const {
+    Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_keyframe(p_a_ptr);
+    Eigen::Map<const Eigen::Quaternion<T> > q_keyframe(q_a_ptr);
+
+    Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_point(p_b_ptr);
+
+    // Compute the map point pose in camera frame.
+    Eigen::Matrix<T, 3, 1> p_kp = q_keyframe * p_point + p_keyframe;
+
+    // Compute the map point pose in pixel frame.
+    Eigen::Matrix<T, 3, 1> pixel = K_ * p_kp;
+
+    // Compute the residuals.
+    // [ undistorted - pixel ]
+    Eigen::Map<Eigen::Matrix<T, 2, 1> > residuals(residuals_ptr);
+    residuals[0] = observation_.template cast<T>()[0] - pixel[0] / pixel[2];
+    residuals[1] = observation_.template cast<T>()[0] - pixel[1] / pixel[2];
+
+    // Scale the residuals by the measurement uncertainty.
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
+    return true;
+  }
+
+  static ceres::CostFunction* Create(const Eigen::Matrix3d& K,
+                                     const Eigen::Vector2d& observation,
+                                     const Eigen::Matrix2d& sqrt_information) {
+    return new ceres::AutoDiffCostFunction<PoseGraph3dErrorTerm, 2, 3, 4, 3>(
+        new PoseGraph3dErrorTerm(K, observation, sqrt_information));
+  }
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+ private:
+  // The camera intrinsics.
+  const Eigen::Matrix3d K_;
+  const Eigen::Vector2d observation_;
+  // The square root of the measurement information matrix.
+  const Eigen::Matrix2d sqrt_information_;
+};
+
+class CeresOptimizer {
+ public:
+  void static BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
+                               const std::vector<MapPoint*>& map_points,
+                               int n_iterations = 5, bool* stop_flag = nullptr,
+                               const unsigned long n_loop_keyframe = 0,
+                               const bool is_robust = true);
+
+  void static GlobalBundleAdjustemnt(Map* map, int n_iterations = 5,
+                                     bool* stop_flag = nullptr,
+                                     const unsigned long n_loop_keyframe = 0,
+                                     const bool is_robust = true);
+
+  void static LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
+                                    Map* map);
+
+  void static BuildOptimationProblem(const std::vector<KeyFrame*>& keyframes,
+                                     const std::vector<MapPoint*>& map_points,
+                                     ceres::Problem* problem);
+};
+
+}  // namespace ORB_SLAM2
+
+#endif

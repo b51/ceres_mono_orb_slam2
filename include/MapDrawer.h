@@ -18,14 +18,14 @@
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef MAPDRAWER_H
-#define MAPDRAWER_H
+#ifndef MAPDRAWER_H_
+#define MAPDRAWER_H_
 
 #include"Map.h"
 #include"MapPoint.h"
 #include"KeyFrame.h"
-#include<pangolin/pangolin.h>
 
+#include<pangolin/pangolin.h>
 #include<mutex>
 
 namespace ORB_SLAM2

@@ -55,8 +55,9 @@
 #include <vector>
 #include <cmath>
 #include <opencv2/core/core.hpp>
-#include "Thirdparty/DBoW2/DUtils/Random.h"
 #include <algorithm>
+
+#include "lib/DBoW2/DUtils/Random.h"
 
 using namespace std;
 
@@ -69,11 +70,11 @@ PnPsolver::PnPsolver(const Frame &F, const vector<MapPoint*> &vpMapPointMatches)
     mnIterations(0), mnBestInliers(0), N(0)
 {
     mvpMapPointMatches = vpMapPointMatches;
-    mvP2D.reserve(F.mvpMapPoints.size());
-    mvSigma2.reserve(F.mvpMapPoints.size());
-    mvP3Dw.reserve(F.mvpMapPoints.size());
-    mvKeyPointIndices.reserve(F.mvpMapPoints.size());
-    mvAllIndices.reserve(F.mvpMapPoints.size());
+    mvP2D.reserve(F.map_points_.size());
+    mvSigma2.reserve(F.map_points_.size());
+    mvP3Dw.reserve(F.map_points_.size());
+    mvKeyPointIndices.reserve(F.map_points_.size());
+    mvAllIndices.reserve(F.map_points_.size());
 
     int idx=0;
     for(size_t i=0, iend=vpMapPointMatches.size(); i<iend; i++)
@@ -84,10 +85,10 @@ PnPsolver::PnPsolver(const Frame &F, const vector<MapPoint*> &vpMapPointMatches)
         {
             if(!pMP->isBad())
             {
-                const cv::KeyPoint &kp = F.mvKeysUn[i];
+                const cv::KeyPoint &kp = F.undistort_keypoints_[i];
 
                 mvP2D.push_back(kp.pt);
-                mvSigma2.push_back(F.mvLevelSigma2[kp.octave]);
+                mvSigma2.push_back(F.level_sigma2s_[kp.octave]);
 
                 cv::Mat Pos = pMP->GetWorldPos();
                 mvP3Dw.push_back(cv::Point3f(Pos.at<float>(0),Pos.at<float>(1), Pos.at<float>(2)));
@@ -101,10 +102,10 @@ PnPsolver::PnPsolver(const Frame &F, const vector<MapPoint*> &vpMapPointMatches)
     }
 
     // Set camera calibration parameters
-    fu = F.fx;
-    fv = F.fy;
-    uc = F.cx;
-    vc = F.cy;
+    fu = F.fx_;
+    fv = F.fy_;
+    uc = F.cx_;
+    vc = F.cy_;
 
     SetRansacParameters();
 }

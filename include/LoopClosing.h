@@ -1,25 +1,35 @@
+/*************************************************************************
+ *
+ *              Author: b51
+ *                Mail: b51live@gmail.com
+ *            FileName: LoopClosing.h
+ *
+ *          Created On: Wed 04 Sep 2019 05:35:12 PM CST
+ *     Licensed under The MIT License [see LICENSE for details]
+ *
+ ************************************************************************/
 /**
-* This file is part of ORB-SLAM2.
-*
-* Copyright (C) 2014-2016 Raúl Mur-Artal <raulmur at unizar dot es> (University of Zaragoza)
-* For more information see <https://github.com/raulmur/ORB_SLAM2>
-*
-* ORB-SLAM2 is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
-*
-* ORB-SLAM2 is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
-*/
+ * This file is part of ORB-SLAM2.
+ *
+ * Copyright (C) 2014-2016 Raúl Mur-Artal <raulmur at unizar dot es> (University
+ * of Zaragoza) For more information see <https://github.com/raulmur/ORB_SLAM2>
+ *
+ * ORB-SLAM2 is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * ORB-SLAM2 is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
+ */
 
-#ifndef LOOPCLOSING_H
-#define LOOPCLOSING_H
+#ifndef LOOPCLOSING_H_
+#define LOOPCLOSING_H_
 
 #include "KeyFrame.h"
 #include "LocalMapping.h"
@@ -29,123 +39,118 @@
 
 #include "KeyFrameDatabase.h"
 
-#include <thread>
 #include <mutex>
-#include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
+#include <thread>
+#include "lib/g2o/g2o/types/types_seven_dof_expmap.h"
 
-namespace ORB_SLAM2
-{
+namespace ORB_SLAM2 {
 
 class Tracking;
 class LocalMapping;
 class KeyFrameDatabase;
 
+class LoopClosing {
+ public:
+  typedef std::pair<std::set<KeyFrame*>, int> ConsistentGroup;
+  typedef std::map<
+      KeyFrame*, g2o::Sim3, std::less<KeyFrame*>,
+      Eigen::aligned_allocator<std::pair<const KeyFrame*, g2o::Sim3> > >
+      KeyFrameAndPose;
 
-class LoopClosing
-{
-public:
+ public:
+  LoopClosing(Map* map, KeyFrameDatabase* keyframe_database,
+              ORBVocabulary* orb_vocabulary, const bool is_fix_scale);
 
-    typedef pair<set<KeyFrame*>,int> ConsistentGroup;    
-    typedef map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
-        Eigen::aligned_allocator<std::pair<const KeyFrame*, g2o::Sim3> > > KeyFrameAndPose;
+  void SetTracker(Tracking* tracker);
 
-public:
+  void SetLocalMapper(LocalMapping* local_mapper);
 
-    LoopClosing(Map* pMap, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale);
+  // Main function
+  void Run();
 
-    void SetTracker(Tracking* pTracker);
+  void InsertKeyFrame(KeyFrame* keyframe);
 
-    void SetLocalMapper(LocalMapping* pLocalMapper);
+  void RequestReset();
 
-    // Main function
-    void Run();
+  // This function will run in a separate thread
+  void RunGlobalBundleAdjustment(unsigned long nLoopKF);
 
-    void InsertKeyFrame(KeyFrame *pKF);
+  bool isRunningGBA() {
+    unique_lock<std::mutex> lock(mutex_global_BA_);
+    return is_running_global_BA_;
+  }
+  bool isFinishedGBA() {
+    unique_lock<std::mutex> lock(mutex_global_BA_);
+    return is_finished_global_BA_;
+  }
 
-    void RequestReset();
+  void RequestFinish();
 
-    // This function will run in a separate thread
-    void RunGlobalBundleAdjustment(unsigned long nLoopKF);
+  bool isFinished();
 
-    bool isRunningGBA(){
-        unique_lock<std::mutex> lock(mMutexGBA);
-        return mbRunningGBA;
-    }
-    bool isFinishedGBA(){
-        unique_lock<std::mutex> lock(mMutexGBA);
-        return mbFinishedGBA;
-    }   
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    void RequestFinish();
+ protected:
+  bool CheckNewKeyFrames();
 
-    bool isFinished();
+  bool DetectLoop();
 
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  bool ComputeSim3();
 
-protected:
+  void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap);
 
-    bool CheckNewKeyFrames();
+  void CorrectLoop();
 
-    bool DetectLoop();
+  void ResetIfRequested();
+  bool is_reset_requested_;
+  std::mutex mutex_reset_;
 
-    bool ComputeSim3();
+  bool CheckFinish();
+  void SetFinish();
+  bool is_finish_requested_;
+  bool is_finished_;
+  std::mutex mutex_finish_;
 
-    void SearchAndFuse(const KeyFrameAndPose &CorrectedPosesMap);
+  Map* map_;
+  Tracking* tracker_;
 
-    void CorrectLoop();
+  KeyFrameDatabase* keyframe_database_;
+  ORBVocabulary* orb_vocabulary_;
 
-    void ResetIfRequested();
-    bool mbResetRequested;
-    std::mutex mMutexReset;
+  LocalMapping* local_mapper_;
 
-    bool CheckFinish();
-    void SetFinish();
-    bool mbFinishRequested;
-    bool mbFinished;
-    std::mutex mMutexFinish;
+  std::list<KeyFrame*> loop_keyframe_queue_;
 
-    Map* mpMap;
-    Tracking* mpTracker;
+  std::mutex mutex_loop_queue_;
 
-    KeyFrameDatabase* mpKeyFrameDB;
-    ORBVocabulary* mpORBVocabulary;
+  // Loop detector parameters
+  float covisibility_consistency_threshold_;
 
-    LocalMapping *mpLocalMapper;
+  // Loop detector variables
+  KeyFrame* current_keyframe_;
+  KeyFrame* matched_keyframe_;
+  std::vector<ConsistentGroup> consistent_groups_;
+  std::vector<KeyFrame*> enough_consistent_candidates_;
+  std::vector<KeyFrame*> current_connected_keyframes_;
+  std::vector<MapPoint*> current_matched_map_points_;
+  std::vector<MapPoint*> loop_map_points_;
+  cv::Mat Scw_;
+  g2o::Sim3 g2oScw_;
 
-    std::list<KeyFrame*> mlpLoopKeyFrameQueue;
+  long unsigned int last_loop_keyframe_id_;
 
-    std::mutex mMutexLoopQueue;
+  // Variables related to Global Bundle Adjustment
+  bool is_running_global_BA_;
+  bool is_finished_global_BA_;
+  bool is_stop_global_BA_;
+  std::mutex mutex_global_BA_;
+  std::thread* thread_global_BA_;
 
-    // Loop detector parameters
-    float mnCovisibilityConsistencyTh;
+  // Fix scale in the stereo/RGB-D case
+  bool is_fix_scale_;
 
-    // Loop detector variables
-    KeyFrame* mpCurrentKF;
-    KeyFrame* mpMatchedKF;
-    std::vector<ConsistentGroup> mvConsistentGroups;
-    std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
-    std::vector<KeyFrame*> mvpCurrentConnectedKFs;
-    std::vector<MapPoint*> mvpCurrentMatchedPoints;
-    std::vector<MapPoint*> mvpLoopMapPoints;
-    cv::Mat mScw;
-    g2o::Sim3 mg2oScw;
-
-    long unsigned int mLastLoopKFid;
-
-    // Variables related to Global Bundle Adjustment
-    bool mbRunningGBA;
-    bool mbFinishedGBA;
-    bool mbStopGBA;
-    std::mutex mMutexGBA;
-    std::thread* mpThreadGBA;
-
-    // Fix scale in the stereo/RGB-D case
-    bool mbFixScale;
-
-
-    bool mnFullBAIdx;
+  bool full_BA_index_;
 };
+}  // namespace ORB_SLAM2
 
-} //namespace ORB_SLAM
-
-#endif // LOOPCLOSING_H
+#endif  // LOOPCLOSING_H

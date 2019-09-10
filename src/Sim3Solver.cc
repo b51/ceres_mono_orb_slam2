@@ -28,7 +28,7 @@
 #include "KeyFrame.h"
 #include "ORBmatcher.h"
 
-#include "Thirdparty/DBoW2/DUtils/Random.h"
+#include "lib/DBoW2/DUtils/Random.h"
 
 namespace ORB_SLAM2
 {
@@ -78,11 +78,11 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
             if(indexKF1<0 || indexKF2<0)
                 continue;
 
-            const cv::KeyPoint &kp1 = pKF1->mvKeysUn[indexKF1];
-            const cv::KeyPoint &kp2 = pKF2->mvKeysUn[indexKF2];
+            const cv::KeyPoint &kp1 = pKF1->undistort_keypoints_[indexKF1];
+            const cv::KeyPoint &kp2 = pKF2->undistort_keypoints_[indexKF2];
 
-            const float sigmaSquare1 = pKF1->mvLevelSigma2[kp1.octave];
-            const float sigmaSquare2 = pKF2->mvLevelSigma2[kp2.octave];
+            const float sigmaSquare1 = pKF1->level_sigma2s_[kp1.octave];
+            const float sigmaSquare2 = pKF2->level_sigma2s_[kp2.octave];
 
             mvnMaxError1.push_back(9.210*sigmaSquare1);
             mvnMaxError2.push_back(9.210*sigmaSquare2);
@@ -102,8 +102,8 @@ Sim3Solver::Sim3Solver(KeyFrame *pKF1, KeyFrame *pKF2, const vector<MapPoint *> 
         }
     }
 
-    mK1 = pKF1->mK;
-    mK2 = pKF2->mK;
+    mK1 = pKF1->K_;
+    mK2 = pKF2->K_;
 
     FromCameraToImage(mvX3Dc1,mvP1im1,mK1);
     FromCameraToImage(mvX3Dc2,mvP2im2,mK2);
