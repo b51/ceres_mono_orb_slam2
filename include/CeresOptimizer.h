@@ -37,16 +37,12 @@ namespace ORB_SLAM2 {
 // [x, y, z, w].
 
 // The estimated measurement is:
-//      t_ab = [ p_ab ]  = [ R(q_a)^T * (p_b - p_a) ]
-//             [ q_ab ]    [ q_a^{-1] * q_b         ]
+//       p_cp = [ q_cw * p_wp + p_cw]
 //
-// where ^{-1} denotes the inverse and R(q) is the rotation matrix for the
-// quaternion. Now we can compute an error metric between the estimated and
 // measurement transformation. For the orientation error, we will use the
-// standard multiplicative error resulting in:
+// standard projection error resulting in:
 //
-//   error = [ p_ab - \hat{p}_ab                 ]
-//           [ 2.0 * Vec(q_ab * \hat{q}_ab^{-1}) ]
+//   error = [ undistorted_pixel - K * p_cp / p_cp[2] ]
 //
 // where Vec(*) returns the vector (imaginary) part of the quaternion. Since
 // the measurement has an uncertainty associated with how accurate it is, we
@@ -55,12 +51,6 @@ namespace ORB_SLAM2 {
 //
 //   residuals = I^{1/2) * error
 // where I is the information matrix which is the inverse of the covariance.
-struct Pose3d {
-  Eigen::Vector3d p;
-  Eigen::Quaterniond q;
-
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-};
 
 class PoseGraph3dErrorTerm {
  public:
@@ -115,11 +105,11 @@ class CeresOptimizer {
  public:
   void static BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
                                const std::vector<MapPoint*>& map_points,
-                               int n_iterations = 5, bool* stop_flag = nullptr,
+                               int n_iterations = 200, bool* stop_flag = nullptr,
                                const unsigned long n_loop_keyframe = 0,
                                const bool is_robust = true);
 
-  void static GlobalBundleAdjustemnt(Map* map, int n_iterations = 5,
+  void static GlobalBundleAdjustemnt(Map* map, int n_iterations = 200,
                                      bool* stop_flag = nullptr,
                                      const unsigned long n_loop_keyframe = 0,
                                      const bool is_robust = true);
