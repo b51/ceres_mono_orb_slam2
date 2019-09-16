@@ -71,13 +71,15 @@ class PoseGraph3dErrorTerm {
     Eigen::Matrix<T, 3, 1> p_kp = q_keyframe * p_point + p_keyframe;
 
     // Compute the map point pose in pixel frame.
-    Eigen::Matrix<T, 3, 1> pixel = K_ * p_kp;
+    Eigen::Matrix<T, 3, 1> projected = K_ * p_kp;
 
     // Compute the residuals.
-    // [ undistorted - pixel ]
+    // [ undistorted - projected ]
     Eigen::Map<Eigen::Matrix<T, 2, 1> > residuals(residuals_ptr);
-    residuals[0] = observation_.template cast<T>()[0] - pixel[0] / pixel[2];
-    residuals[1] = observation_.template cast<T>()[0] - pixel[1] / pixel[2];
+    residuals[0] =
+        observation_.template cast<T>()[0] - projected[0] / projected[2];
+    residuals[1] =
+        observation_.template cast<T>()[1] - projected[1] / projected[2];
 
     // Scale the residuals by the measurement uncertainty.
     residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
@@ -87,7 +89,11 @@ class PoseGraph3dErrorTerm {
   static ceres::CostFunction* Create(const Eigen::Matrix3d& K,
                                      const Eigen::Vector2d& observation,
                                      const Eigen::Matrix2d& sqrt_information) {
-    return new ceres::AutoDiffCostFunction<PoseGraph3dErrorTerm, 2, 3, 4, 3>(
+    return new ceres::AutoDiffCostFunction<PoseGraph3dErrorTerm,
+                                           /* residual numbers */ 2,
+                                           /* first optimize numbers */ 3,
+                                           /* second optimize numbers */ 4,
+                                           /* third optimize numbers */ 3>(
         new PoseGraph3dErrorTerm(K, observation, sqrt_information));
   }
 
@@ -101,11 +107,69 @@ class PoseGraph3dErrorTerm {
   const Eigen::Matrix2d sqrt_information_;
 };
 
+class PoseErrorTerm {
+ public:
+  PoseErrorTerm();
+  PoseErrorTerm(const Eigen::Matrix3d& K, const Eigen::Vector2d& observation,
+                const Eigen::Vector3d& point_pose,
+                const Eigen::Matrix2d& sqrt_information)
+      : K_(K),
+        observation_(observation),
+        point_pose_(point_pose),
+        sqrt_information_(sqrt_information) {}
+
+  template <typename T>
+  bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
+                  T* residuals_ptr) const {
+    Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_frame(p_a_ptr);
+    Eigen::Map<const Eigen::Quaternion<T> > q_frame(q_a_ptr);
+    // Compute the map point pose in camera frame.
+    Eigen::Matrix<T, 3, 1> p_cp =
+        q_frame * point_pose_.template cast<T>() + p_frame;
+    // Compute the map point pose in pixel frame.
+    Eigen::Matrix<T, 3, 1> projected = K_ * p_cp;
+
+    // Compute the residuals.
+    // [ undistorted - projected ]
+    Eigen::Map<Eigen::Matrix<T, 2, 1> > residuals(residuals_ptr);
+    residuals[0] =
+        observation_.template cast<T>()[0] - projected[0] / projected[2];
+    residuals[1] =
+        observation_.template cast<T>()[1] - projected[1] / projected[2];
+    // Scale the residuals by the measurement uncertainty.
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
+    return true;
+  }
+
+  static ceres::CostFunction* Create(const Eigen::Matrix3d& K,
+                                     const Eigen::Vector2d& observation,
+                                     const Eigen::Vector3d& point_pose,
+                                     const Eigen::Matrix2d& sqrt_information) {
+    return new ceres::AutoDiffCostFunction<PoseErrorTerm,
+                                           /* residual numbers */ 2,
+                                           /* first optimize numbers */ 3,
+                                           /* second optimize numbers */ 4>(
+        new PoseErrorTerm(K, observation, point_pose, sqrt_information));
+  }
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+ private:
+  const Eigen::Matrix3d K_;
+  // The point pose in image frame
+  const Eigen::Vector2d observation_;
+  // The point pose in world frame
+  const Eigen::Vector3d point_pose_;
+  // The square root of the measurement information matrix.
+  const Eigen::Matrix2d sqrt_information_;
+};
+
 class CeresOptimizer {
  public:
   void static BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
                                const std::vector<MapPoint*>& map_points,
-                               int n_iterations = 200, bool* stop_flag = nullptr,
+                               int n_iterations = 200,
+                               bool* stop_flag = nullptr,
                                const unsigned long n_loop_keyframe = 0,
                                const bool is_robust = true);
 
@@ -117,9 +181,7 @@ class CeresOptimizer {
   void static LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
                                     Map* map);
 
-  void static BuildOptimationProblem(const std::vector<KeyFrame*>& keyframes,
-                                     const std::vector<MapPoint*>& map_points,
-                                     ceres::Problem* problem);
+  int static PoseOptimization(Frame* frame);
 };
 
 }  // namespace ORB_SLAM2

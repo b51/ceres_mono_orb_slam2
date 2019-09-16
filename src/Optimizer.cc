@@ -197,7 +197,7 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame*>& keyframes,
   }
 }
 
-int Optimizer::PoseOptimization(Frame* pFrame) {
+int Optimizer::NoneInlierPoseOptimization(Frame* pFrame) {
   g2o::SparseOptimizer optimizer;
   g2o::BlockSolver_6_3::LinearSolverType* linearSolver;
 
@@ -227,13 +227,7 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   vpEdgesMono.reserve(N);
   vnIndexEdgeMono.reserve(N);
 
-  vector<g2o::EdgeStereoSE3ProjectXYZOnlyPose*> vpEdgesStereo;
-  vector<size_t> vnIndexEdgeStereo;
-  vpEdgesStereo.reserve(N);
-  vnIndexEdgeStereo.reserve(N);
-
   const float deltaMono = sqrt(5.991);
-  const float deltaStereo = sqrt(7.815);
 
   {
     unique_lock<mutex> lock(MapPoint::global_mutex_);
@@ -276,36 +270,87 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
 
           vpEdgesMono.push_back(e);
           vnIndexEdgeMono.push_back(i);
-        } else  // Stereo observation
-        {
+        }
+      }
+    }
+  }
+
+  if (nInitialCorrespondences < 3) return 0;
+
+  // Recover optimized pose and return number of inliers
+  g2o::VertexSE3Expmap* vSE3_recov =
+      static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(0));
+  g2o::SE3Quat SE3quat_recov = vSE3_recov->estimate();
+  cv::Mat pose = Converter::toCvMat(SE3quat_recov);
+  pFrame->SetPose(pose);
+
+  return nInitialCorrespondences;
+}
+
+int Optimizer::PoseOptimization(Frame* pFrame) {
+  g2o::SparseOptimizer optimizer;
+  g2o::BlockSolver_6_3::LinearSolverType* linearSolver;
+
+  linearSolver =
+      new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+
+  g2o::BlockSolver_6_3* solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+
+  g2o::OptimizationAlgorithmLevenberg* solver =
+      new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+  optimizer.setAlgorithm(solver);
+
+  int nInitialCorrespondences = 0;
+
+  // Set Frame vertex
+  g2o::VertexSE3Expmap* vSE3 = new g2o::VertexSE3Expmap();
+  vSE3->setEstimate(Converter::toSE3Quat(pFrame->Tcw_));
+  vSE3->setId(0);
+  vSE3->setFixed(false);
+  optimizer.addVertex(vSE3);
+
+  // Set MapPoint vertices
+  const int N = pFrame->N_;
+
+  vector<g2o::EdgeSE3ProjectXYZOnlyPose*> vpEdgesMono;
+  vector<size_t> vnIndexEdgeMono;
+  vpEdgesMono.reserve(N);
+  vnIndexEdgeMono.reserve(N);
+
+  const float deltaMono = sqrt(5.991);
+
+  {
+    unique_lock<mutex> lock(MapPoint::global_mutex_);
+
+    for (int i = 0; i < N; i++) {
+      MapPoint* map_point = pFrame->map_points_[i];
+      if (map_point) {
+        // Monocular observation
+        if (pFrame->mvuRight[i] < 0) {
           nInitialCorrespondences++;
           pFrame->is_outliers_[i] = false;
 
-          // SET EDGE
-          Eigen::Matrix<double, 3, 1> obs;
+          Eigen::Matrix<double, 2, 1> obs;
           const cv::KeyPoint& kpUn = pFrame->undistort_keypoints_[i];
-          const float& kp_ur = pFrame->mvuRight[i];
-          obs << kpUn.pt.x, kpUn.pt.y, kp_ur;
+          obs << kpUn.pt.x, kpUn.pt.y;
 
-          g2o::EdgeStereoSE3ProjectXYZOnlyPose* e =
-              new g2o::EdgeStereoSE3ProjectXYZOnlyPose();
+          g2o::EdgeSE3ProjectXYZOnlyPose* e =
+              new g2o::EdgeSE3ProjectXYZOnlyPose();
 
           e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(
                               optimizer.vertex(0)));
           e->setMeasurement(obs);
           const float invSigma2 = pFrame->inv_level_sigma2s_[kpUn.octave];
-          Eigen::Matrix3d Info = Eigen::Matrix3d::Identity() * invSigma2;
-          e->setInformation(Info);
+          e->setInformation(Eigen::Matrix2d::Identity() * invSigma2);
 
           g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
           e->setRobustKernel(rk);
-          rk->setDelta(deltaStereo);
+          rk->setDelta(deltaMono);
 
           e->fx = pFrame->fx_;
           e->fy = pFrame->fy_;
           e->cx = pFrame->cx_;
           e->cy = pFrame->cy_;
-          e->bf = pFrame->bf_;
           cv::Mat Xw = map_point->GetWorldPos();
           e->Xw[0] = Xw.at<float>(0);
           e->Xw[1] = Xw.at<float>(1);
@@ -313,8 +358,8 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
 
           optimizer.addEdge(e);
 
-          vpEdgesStereo.push_back(e);
-          vnIndexEdgeStereo.push_back(i);
+          vpEdgesMono.push_back(e);
+          vnIndexEdgeMono.push_back(i);
         }
       }
     }
@@ -354,29 +399,6 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
       } else {
         pFrame->is_outliers_[idx] = false;
         e->setLevel(0);
-      }
-
-      if (it == 2) e->setRobustKernel(0);
-    }
-
-    for (size_t i = 0, iend = vpEdgesStereo.size(); i < iend; i++) {
-      g2o::EdgeStereoSE3ProjectXYZOnlyPose* e = vpEdgesStereo[i];
-
-      const size_t idx = vnIndexEdgeStereo[i];
-
-      if (pFrame->is_outliers_[idx]) {
-        e->computeError();
-      }
-
-      const float chi2 = e->chi2();
-
-      if (chi2 > chi2Stereo[it]) {
-        pFrame->is_outliers_[idx] = true;
-        e->setLevel(1);
-        nBad++;
-      } else {
-        e->setLevel(0);
-        pFrame->is_outliers_[idx] = false;
       }
 
       if (it == 2) e->setRobustKernel(0);

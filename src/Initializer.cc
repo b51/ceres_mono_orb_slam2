@@ -122,16 +122,13 @@ bool Initializer::Initialize(const Frame& current_frame,
 
   // Compute ratio of scores
   float RH = SH / (SH + SF);
-  LOG(INFO) << "SH: " << SH << " SF: " << SF << " RH: " << RH;
 
   // Try to reconstruct from homography or fundamental depending on the ratio
   // (0.40-0.45)
   if (RH > 0.40) {
-    LOG(INFO) << " H win ";
     return ReconstructH(vbMatchesInliersH, H, K_, R21, t21, vP3D,
                         is_triangulated, 1.0, 50);
   } else {  // if(pF_HF>0.6)
-    LOG(INFO) << " F win ";
     return ReconstructF(vbMatchesInliersF, F, K_, R21, t21, vP3D,
                         is_triangulated, 1.0, 50);
   }
@@ -487,8 +484,6 @@ bool Initializer::ReconstructF(vector<bool>& vbMatchesInliers,
   int nGood4 = CheckRT(R2, -t, reference_keypoints_, current_keypoints_,
                        index_matches_, vbMatchesInliers, K, vP3D4,
                        4.0 * sigma2_, vbTriangulated4, parallax4);
-  LOG(INFO) << "g1: " << nGood1 << " g2: " << nGood2 << " g3: " << nGood3
-            << " g4: " << nGood4;
 
   int maxGood = max(nGood1, max(nGood2, max(nGood3, nGood4)));
 

@@ -55,6 +55,7 @@ class Optimizer {
                                      const unsigned long nLoopKF = 0,
                                      const bool bRobust = true);
   void static LocalBundleAdjustment(KeyFrame* pKF, bool* pbStopFlag, Map* pMap);
+  int static NoneInlierPoseOptimization(Frame* pFrame);
   int static PoseOptimization(Frame* pFrame);
 
   // if bFixScale is true, 6DoF optimization (stereo,rgbd), 7DoF otherwise

@@ -33,9 +33,11 @@
 #include "Map.h"
 #include "ORBmatcher.h"
 
-#include "Optimizer.h"
 #include "CeresOptimizer.h"
+#include "Optimizer.h"
 #include "PnPsolver.h"
+
+#define OPTIMIZE_MODE 1
 
 namespace ORB_SLAM2 {
 
@@ -503,7 +505,7 @@ void Tracking::CreateInitialMapMonocular() {
   // Bundle Adjustment
   LOG(INFO) << "New Map created with " << map_->MapPointsInMap() << " points";
 
-  //Optimizer::GlobalBundleAdjustemnt(map_, 20);
+  // Optimizer::GlobalBundleAdjustemnt(map_, 20);
   CeresOptimizer::GlobalBundleAdjustemnt(map_, 20);
 
   // Set median depth to 1
@@ -586,7 +588,14 @@ bool Tracking::TrackReferenceKeyFrame() {
   current_frame_.map_points_ = matched_map_points;
   current_frame_.SetPose(last_frame_.Tcw_);
 
-  Optimizer::PoseOptimization(&current_frame_);
+  LOG(WARNING) << "Track ReferenceKeyFrame";
+  if (OPTIMIZE_MODE == 0) {
+    CeresOptimizer::PoseOptimization(&current_frame_);
+  } else if (OPTIMIZE_MODE == 1) {
+    Optimizer::NoneInlierPoseOptimization(&current_frame_);
+  } else {
+    Optimizer::PoseOptimization(&current_frame_);
+  }
 
   // Discard outliers
   int nmatchesMap = 0;
@@ -639,12 +648,21 @@ bool Tracking::TrackWithMotionModel() {
     nmatches = matcher.SearchByProjection(current_frame_, last_frame_, 2 * th);
   }
 
+  LOG(ERROR) << "nmatches: " << nmatches;
+
   if (nmatches < 20) {
     return false;
   }
 
   // Optimize frame pose with all matches
-  Optimizer::PoseOptimization(&current_frame_);
+  LOG(WARNING) << "Track With Motion Model";
+  if (OPTIMIZE_MODE == 0) {
+    CeresOptimizer::PoseOptimization(&current_frame_);
+  } else if (OPTIMIZE_MODE == 1) {
+    Optimizer::NoneInlierPoseOptimization(&current_frame_);
+  } else {
+    Optimizer::PoseOptimization(&current_frame_);
+  }
 
   // Discard outliers
   int nmatchesMap = 0;
@@ -681,31 +699,45 @@ bool Tracking::TrackLocalMap() {
   SearchLocalPoints();
 
   // Optimize Pose
-  Optimizer::PoseOptimization(&current_frame_);
+  LOG(WARNING) << "Track Local Map";
+  if (OPTIMIZE_MODE == 0) {
+    CeresOptimizer::PoseOptimization(&current_frame_);
+  } else if (OPTIMIZE_MODE == 1) {
+    Optimizer::NoneInlierPoseOptimization(&current_frame_);
+  } else {
+    Optimizer::PoseOptimization(&current_frame_);
+  }
   n_matches_inliers_ = 0;
 
   // Update MapPoints Statistics
   for (int i = 0; i < current_frame_.N_; i++) {
     if (current_frame_.map_points_[i]) {
+      LOG(INFO) << " map_point i: " << i;
       if (!current_frame_.is_outliers_[i]) {
+        LOG(WARNING) << " is_outliers i: " << i;
         current_frame_.map_points_[i]->IncreaseFound();
         if (!do_only_tracking_) {
-          if (current_frame_.map_points_[i]->Observations() > 0)
+          if (current_frame_.map_points_[i]->Observations() > 0) {
+            LOG(WARNING) << " n_matches_inliers_ i: " << i;
             n_matches_inliers_++;
+          }
         } else
           n_matches_inliers_++;
       }
     }
   }
+  LOG(INFO) << "n_matches_inliers_: " << n_matches_inliers_;
 
   // Decide if the tracking was succesful
   // More restrictive if there was a relocalization recently
   if (current_frame_.id_ < last_reloc_frame_id_ + max_frames_ &&
       n_matches_inliers_ < 50) {
+    LOG(ERROR) << " Lost 1";
     return false;
   }
 
   if (n_matches_inliers_ < 30) {
+    LOG(ERROR) << " Lost 2";
     return false;
   } else {
     return true;
