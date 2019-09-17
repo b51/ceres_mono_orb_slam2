@@ -37,7 +37,7 @@
 #include "Optimizer.h"
 #include "PnPsolver.h"
 
-#define OPTIMIZE_MODE 1
+#define OPTIMIZE_MODE 0
 
 namespace ORB_SLAM2 {
 
@@ -147,6 +147,7 @@ void Tracking::SetViewer(Viewer* viewer) { viewer_ = viewer; }
 
 cv::Mat Tracking::GrabImageMonocular(const cv::Mat& img,
                                      const double& timestamp) {
+  static int frame_num = 0;
   img_gray_ = img;
 
   if (img_gray_.channels() == 3) {
@@ -170,6 +171,7 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat& img,
         Frame(img_gray_, timestamp, orb_extractor_left_, orb_vocabulary_, K_,
               dist_coef_, bf_, theshold_depth_);
 
+  LOG(INFO) << "+++++++++ frame_num: " << frame_num++ << " ++++++++++";
   Track();
 
   return current_frame_.Tcw_.clone();
@@ -570,6 +572,7 @@ void Tracking::CheckReplacedInLastFrame() {
 }
 
 bool Tracking::TrackReferenceKeyFrame() {
+  LOG(WARNING) << "Track ReferenceKeyFrame";
   // Compute Bag of Words vector
   current_frame_.ComputeBoW();
 
@@ -581,6 +584,7 @@ bool Tracking::TrackReferenceKeyFrame() {
   int nmatches = matcher.SearchByBoW(reference_keyframe_, current_frame_,
                                      matched_map_points);
 
+  LOG(ERROR) << "TrackReferenceKeyFrame nmatches: " << nmatches;
   if (nmatches < 15) {
     return false;
   }
@@ -588,11 +592,8 @@ bool Tracking::TrackReferenceKeyFrame() {
   current_frame_.map_points_ = matched_map_points;
   current_frame_.SetPose(last_frame_.Tcw_);
 
-  LOG(WARNING) << "Track ReferenceKeyFrame";
   if (OPTIMIZE_MODE == 0) {
     CeresOptimizer::PoseOptimization(&current_frame_);
-  } else if (OPTIMIZE_MODE == 1) {
-    Optimizer::NoneInlierPoseOptimization(&current_frame_);
   } else {
     Optimizer::PoseOptimization(&current_frame_);
   }
@@ -626,6 +627,7 @@ void Tracking::UpdateLastFrame() {
 }
 
 bool Tracking::TrackWithMotionModel() {
+  LOG(WARNING) << "Track With Motion Model";
   ORBmatcher matcher(0.9, true);
 
   // Update last frame pose according to its reference keyframe
@@ -648,18 +650,13 @@ bool Tracking::TrackWithMotionModel() {
     nmatches = matcher.SearchByProjection(current_frame_, last_frame_, 2 * th);
   }
 
-  LOG(ERROR) << "nmatches: " << nmatches;
-
   if (nmatches < 20) {
     return false;
   }
 
   // Optimize frame pose with all matches
-  LOG(WARNING) << "Track With Motion Model";
   if (OPTIMIZE_MODE == 0) {
     CeresOptimizer::PoseOptimization(&current_frame_);
-  } else if (OPTIMIZE_MODE == 1) {
-    Optimizer::NoneInlierPoseOptimization(&current_frame_);
   } else {
     Optimizer::PoseOptimization(&current_frame_);
   }
@@ -690,6 +687,7 @@ bool Tracking::TrackWithMotionModel() {
 }
 
 bool Tracking::TrackLocalMap() {
+  LOG(WARNING) << "Track Local Map";
   // We have an estimation of the camera pose and some map points tracked in the
   // frame. We retrieve the local map and try to find matches to points in the
   // local map.
@@ -699,11 +697,8 @@ bool Tracking::TrackLocalMap() {
   SearchLocalPoints();
 
   // Optimize Pose
-  LOG(WARNING) << "Track Local Map";
   if (OPTIMIZE_MODE == 0) {
     CeresOptimizer::PoseOptimization(&current_frame_);
-  } else if (OPTIMIZE_MODE == 1) {
-    Optimizer::NoneInlierPoseOptimization(&current_frame_);
   } else {
     Optimizer::PoseOptimization(&current_frame_);
   }
@@ -712,13 +707,10 @@ bool Tracking::TrackLocalMap() {
   // Update MapPoints Statistics
   for (int i = 0; i < current_frame_.N_; i++) {
     if (current_frame_.map_points_[i]) {
-      LOG(INFO) << " map_point i: " << i;
       if (!current_frame_.is_outliers_[i]) {
-        LOG(WARNING) << " is_outliers i: " << i;
         current_frame_.map_points_[i]->IncreaseFound();
         if (!do_only_tracking_) {
           if (current_frame_.map_points_[i]->Observations() > 0) {
-            LOG(WARNING) << " n_matches_inliers_ i: " << i;
             n_matches_inliers_++;
           }
         } else
@@ -726,18 +718,15 @@ bool Tracking::TrackLocalMap() {
       }
     }
   }
-  LOG(INFO) << "n_matches_inliers_: " << n_matches_inliers_;
 
   // Decide if the tracking was succesful
   // More restrictive if there was a relocalization recently
   if (current_frame_.id_ < last_reloc_frame_id_ + max_frames_ &&
       n_matches_inliers_ < 50) {
-    LOG(ERROR) << " Lost 1";
     return false;
   }
 
   if (n_matches_inliers_ < 30) {
-    LOG(ERROR) << " Lost 2";
     return false;
   } else {
     return true;

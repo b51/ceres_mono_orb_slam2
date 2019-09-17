@@ -114,6 +114,7 @@ int ORBmatcher::SearchByProjection(Frame& F,
     }
   }
 
+  LOG(INFO) << "nmatches projection with map points: "  << nmatches;
   return nmatches;
 }
 

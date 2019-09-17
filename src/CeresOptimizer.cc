@@ -140,8 +140,6 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
 
-  LOG(INFO) << summary.FullReport();
-
   // reset keyframes pose to optimized pose
   for (auto it = ided_keyframe_pose.begin(); it != ided_keyframe_pose.end();
        it++) {
@@ -196,48 +194,88 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
   }
 }
 
+int CeresOptimizer::CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
+                                  Eigen::Quaterniond& qcw) {
+  int n_bad = 0;
+  Eigen::Matrix3d K;
+  K << frame->fx_, 0., frame->cx_, 0., frame->fy_, frame->cy_, 0., 0., 1.;
+  const int N = frame->N_;
+  for (int i = 0; i < N; i++) {
+    MapPoint* map_point = frame->map_points_[i];
+    if (map_point) {
+      cv::Mat Xw = map_point->GetWorldPos();
+      Eigen::Vector3d point_pose(Xw.at<float>(0), Xw.at<float>(1),
+                                 Xw.at<float>(2));
+      cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
+      Eigen::Vector2d observation(undistort_keypoint.pt.x,
+                                  undistort_keypoint.pt.y);
+      Eigen::Vector3d pose = K * (qcw * point_pose + tcw);
+      double error_u = observation[0] - pose[0] / pose[2];
+      double error_v = observation[1] - pose[1] / pose[2];
+      double error = error_u * error_u + error_v * error_v;
+      if (error > 5.991) {
+        frame->is_outliers_[i] = true;
+        n_bad++;
+      } else {
+        frame->is_outliers_[i] = false;
+      }
+    }
+  }
+  return n_bad;
+}
+
+// Optimize frame pose with poeses of map points that matched with last frame,
+// use projection to calculate residuals for Tcw optimizing
+// residuals = undistorted_point - K * [Tcw * Pwp]
+
 int CeresOptimizer::PoseOptimization(Frame* frame) {
   ceres::Problem problem;
   const int N = frame->N_;
   int n_initial_correspondences = 0;
 
-  Eigen::Matrix<double, 7, 1> frame_Tcw;
+  Eigen::Vector3d frame_tcw;
+  Eigen::Quaterniond frame_qcw;
+  int n_bad = 0;
   {
     unique_lock<mutex> lock(MapPoint::global_mutex_);
     // Get frame Pose
     cv::Mat _frame_pose = frame->Tcw_.clone();
     Eigen::Matrix<double, 3, 3> frame_R;
-    Eigen::Matrix<double, 3, 1> frame_t;
-    frame_R << _frame_pose.at<float>(0, 0), _frame_pose.at<float>(0, 1),
-        _frame_pose.at<float>(0, 2), _frame_pose.at<float>(1, 0),
-        _frame_pose.at<float>(1, 1), _frame_pose.at<float>(1, 2),
-        _frame_pose.at<float>(2, 0), _frame_pose.at<float>(2, 1),
-        _frame_pose.at<float>(2, 2);
-    frame_t << _frame_pose.at<float>(0, 3), _frame_pose.at<float>(1, 3),
-        _frame_pose.at<float>(2, 3);
-    frame_Tcw.block<3, 1>(0, 0) = frame_t;
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+        frame_R(i, j) = _frame_pose.at<float>(i, j);
+      }
+      frame_tcw[i] = _frame_pose.at<float>(i, 3);
+    }
+    // Eigen Quaternion coeffs output [x, y, z, w]
+    frame_qcw = Eigen::Quaterniond(frame_R);
 
     Eigen::Matrix3d K;
     K << frame->fx_, 0., frame->cx_, 0., frame->fy_, frame->cy_, 0., 0., 1.;
 
-    // Eigen Quaternion coeffs output [x, y, z, w]
-    frame_Tcw.block<4, 1>(3, 0) = Eigen::Quaterniond(frame_R).coeffs();
-
     // ceres::LossFunction* loss_function = new ceres::CauchyLoss(0.5);
-    ceres::LossFunction* loss_function = new ceres::HuberLoss(1.);
+    ceres::LossFunction* loss_function = new ceres::HuberLoss(sqrt(5.991));
+    ceres::LocalParameterization* quaternion_local_parameterization =
+        new ceres::EigenQuaternionParameterization;
+    ceres::Solver::Options options;
+    options.max_num_iterations = 100;
+    options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+    ceres::Solver::Summary summary;
+
+    n_initial_correspondences = 0;
     for (int i = 0; i < N; i++) {
       MapPoint* map_point = frame->map_points_[i];
       if (map_point) {
+        frame->is_outliers_[i] = false;
         // Monocular observation
         cv::Mat Xw = map_point->GetWorldPos();
         Eigen::Vector3d point_pose(Xw.at<float>(0), Xw.at<float>(1),
                                    Xw.at<float>(2));
         n_initial_correspondences++;
 
-        frame->is_outliers_[i] = false;
-        Eigen::Vector2d observation;
         const cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
-        observation << undistort_keypoint.pt.x, undistort_keypoint.pt.y;
+        Eigen::Vector2d observation(undistort_keypoint.pt.x,
+                                    undistort_keypoint.pt.y);
         const float invSigma2 =
             frame->inv_level_sigma2s_[undistort_keypoint.octave];
         Eigen::Matrix2d sqrt_information =
@@ -245,27 +283,22 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
 
         ceres::CostFunction* cost_function =
             PoseErrorTerm::Create(K, observation, point_pose, sqrt_information);
-        problem.AddResidualBlock(cost_function, loss_function,
-                                 frame_Tcw.block<3, 1>(0, 0).data(),
-                                 frame_Tcw.block<4, 1>(3, 0).data());
+        problem.AddResidualBlock(cost_function, loss_function, frame_tcw.data(),
+                                 frame_qcw.coeffs().data());
+        problem.SetParameterization(frame_qcw.coeffs().data(),
+                                    quaternion_local_parameterization);
       }
     }
+    if (n_initial_correspondences < 3) return 0;
+
+    ceres::Solve(options, &problem, &summary);
+    n_bad = CheckOutliers(frame, frame_tcw, frame_qcw);
   }
 
-  if (n_initial_correspondences < 3) return 0;
-
-  ceres::Solver::Options options;
-  options.max_num_iterations = 100;
-  options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-
-  ceres::Solver::Summary summary;
-  ceres::Solve(options, &problem, &summary);
-
-  Eigen::Quaterniond q(frame_Tcw[6], frame_Tcw[3], frame_Tcw[4], frame_Tcw[5]);
-  Eigen::Matrix3d R = q.normalized().toRotationMatrix();
+  Eigen::Matrix3d R = frame_qcw.normalized().toRotationMatrix();
   Eigen::Matrix<double, 4, 4> _pose = Eigen::Matrix<double, 4, 4>::Identity();
   _pose.block<3, 3>(0, 0) = R;
-  _pose.block<3, 1>(0, 3) << frame_Tcw[0], frame_Tcw[1], frame_Tcw[2];
+  _pose.block<3, 1>(0, 3) = frame_tcw;
   cv::Mat pose = cv::Mat(4, 4, CV_32F);
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
@@ -273,7 +306,7 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
     }
   }
   frame->SetPose(pose);
-  return n_initial_correspondences;
+  return n_initial_correspondences - n_bad;
 }
 
 }  // namespace ORB_SLAM2

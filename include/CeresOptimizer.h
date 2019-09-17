@@ -68,10 +68,10 @@ class PoseGraph3dErrorTerm {
     Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_point(p_b_ptr);
 
     // Compute the map point pose in camera frame.
-    Eigen::Matrix<T, 3, 1> p_kp = q_keyframe * p_point + p_keyframe;
+    Eigen::Matrix<T, 3, 1> p_cp = q_keyframe * p_point + p_keyframe;
 
     // Compute the map point pose in pixel frame.
-    Eigen::Matrix<T, 3, 1> projected = K_ * p_kp;
+    Eigen::Matrix<T, 3, 1> projected = K_ * p_cp;
 
     // Compute the residuals.
     // [ undistorted - projected ]
@@ -180,6 +180,9 @@ class CeresOptimizer {
 
   void static LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
                                     Map* map);
+
+  int static CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
+                           Eigen::Quaterniond& qcw);
 
   int static PoseOptimization(Frame* frame);
 };
