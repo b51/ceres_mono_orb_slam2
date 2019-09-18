@@ -114,7 +114,7 @@ int ORBmatcher::SearchByProjection(Frame& F,
     }
   }
 
-  LOG(INFO) << "nmatches projection with map points: "  << nmatches;
+  LOG(INFO) << "nmatches projection with map points: " << nmatches;
   return nmatches;
 }
 
@@ -1190,11 +1190,6 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
 
   const cv::Mat tlc = Rlw * twc + tlw;
 
-  // const bool bForward = tlc.at<float>(2) > CurrentFrame.mb_ && !bMono;
-  // const bool bBackward = -tlc.at<float>(2) > CurrentFrame.mb_ && !bMono;
-  const bool bForward = false;
-  const bool bBackward = false;
-
   for (int i = 0; i < LastFrame.N_; i++) {
     MapPoint* pMP = LastFrame.map_points_[i];
 
@@ -1223,14 +1218,8 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
 
         vector<size_t> vIndices2;
 
-        if (bForward)
-          vIndices2 = CurrentFrame.GetFeaturesInArea(u, v, radius, nLastOctave);
-        else if (bBackward)
-          vIndices2 =
-              CurrentFrame.GetFeaturesInArea(u, v, radius, 0, nLastOctave);
-        else
-          vIndices2 = CurrentFrame.GetFeaturesInArea(
-              u, v, radius, nLastOctave - 1, nLastOctave + 1);
+        vIndices2 = CurrentFrame.GetFeaturesInArea(
+            u, v, radius, nLastOctave - 1, nLastOctave + 1);
 
         if (vIndices2.empty()) continue;
 
@@ -1245,12 +1234,6 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
           const size_t i2 = *vit;
           if (CurrentFrame.map_points_[i2])
             if (CurrentFrame.map_points_[i2]->Observations() > 0) continue;
-
-          if (CurrentFrame.mvuRight[i2] > 0) {
-            const float ur = u - CurrentFrame.bf_ * invzc;
-            const float er = fabs(ur - CurrentFrame.mvuRight[i2]);
-            if (er > radius) continue;
-          }
 
           const cv::Mat& d = CurrentFrame.descriptors_.row(i2);
 

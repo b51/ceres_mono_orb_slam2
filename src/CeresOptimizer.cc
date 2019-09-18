@@ -46,20 +46,17 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
 
   for (size_t i = 0; i < keyframes.size(); i++) {
     KeyFrame* keyframe = keyframes[i];
+    Eigen::Matrix<double, 7, 1> keyframe_Tcw;
 
     // Get keyframe Poses
     cv::Mat _kf_pose = keyframe->GetPose();
     Eigen::Matrix<double, 3, 3> keyframe_R;
-    Eigen::Matrix<double, 3, 1> keyframe_t;
-    keyframe_R << _kf_pose.at<float>(0, 0), _kf_pose.at<float>(0, 1),
-        _kf_pose.at<float>(0, 2), _kf_pose.at<float>(1, 0),
-        _kf_pose.at<float>(1, 1), _kf_pose.at<float>(1, 2),
-        _kf_pose.at<float>(2, 0), _kf_pose.at<float>(2, 1),
-        _kf_pose.at<float>(2, 2);
-    keyframe_t << _kf_pose.at<float>(0, 3), _kf_pose.at<float>(1, 3),
-        _kf_pose.at<float>(2, 3);
-    Eigen::Matrix<double, 7, 1> keyframe_Tcw;
-    keyframe_Tcw.block<3, 1>(0, 0) = keyframe_t;
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+        keyframe_R(i, j) = _kf_pose.at<float>(i, j);
+      }
+      keyframe_Tcw(i, 3) = _kf_pose.at<float>(i, 3);
+    }
 
     // Eigen Quaternion coeffs output [x, y, z, w]
     keyframe_Tcw.block<4, 1>(3, 0) = Eigen::Quaterniond(keyframe_R).coeffs();
@@ -68,6 +65,9 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
   }
 
   ceres::LossFunction* loss_function = nullptr;
+  if (is_robust) {
+    loss_function = new ceres::HuberLoss(5.991);
+  }
   ceres::LocalParameterization* quaternion_local_parameterization =
       new ceres::EigenQuaternionParameterization;
 
@@ -134,6 +134,10 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
   }
 
   ceres::Solver::Options options;
+  if (stop_flag) {
+    options.callbacks.push_back(new StopFlagCallback(stop_flag));
+  }
+
   options.max_num_iterations = n_iterations;
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
 

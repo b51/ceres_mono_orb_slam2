@@ -198,8 +198,6 @@ class Tracking {
 
   // Color order (true RGB, false BGR, ignored if grayscale)
   bool is_rgb_;
-
-  list<MapPoint*> temporal_map_points_;
 };
 
 }  // namespace ORB_SLAM2

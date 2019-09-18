@@ -29,6 +29,7 @@
  */
 
 #include "LoopClosing.h"
+#include "CeresOptimizer.h"
 #include "Converter.h"
 #include "ORBmatcher.h"
 #include "Optimizer.h"
@@ -648,8 +649,8 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
   cout << "Starting Global Bundle Adjustment" << endl;
 
   int index = full_BA_index_;
-  Optimizer::GlobalBundleAdjustemnt(map_, 10, &is_stop_global_BA_, nLoopKF,
-                                    false);
+  CeresOptimizer::GlobalBundleAdjustemnt(map_, 10, &is_stop_global_BA_, nLoopKF,
+                                         false);
 
   // Update all MapPoints and KeyFrames
   // Local Mapping was active during BA, that means that there might be new

@@ -324,15 +324,6 @@ void Tracking::Track() {
           }
       }
 
-      // Delete temporal MapPoints
-      for (list<MapPoint*>::iterator lit = temporal_map_points_.begin(),
-                                     lend = temporal_map_points_.end();
-           lit != lend; lit++) {
-        MapPoint* map_point = *lit;
-        delete map_point;
-      }
-      temporal_map_points_.clear();
-
       // Check if we need to insert a new keyframe
       if (NeedNewKeyFrame()) {
         CreateNewKeyFrame();
@@ -592,11 +583,7 @@ bool Tracking::TrackReferenceKeyFrame() {
   current_frame_.map_points_ = matched_map_points;
   current_frame_.SetPose(last_frame_.Tcw_);
 
-  if (OPTIMIZE_MODE == 0) {
-    CeresOptimizer::PoseOptimization(&current_frame_);
-  } else {
-    Optimizer::PoseOptimization(&current_frame_);
-  }
+  CeresOptimizer::PoseOptimization(&current_frame_);
 
   // Discard outliers
   int nmatchesMap = 0;
@@ -655,11 +642,7 @@ bool Tracking::TrackWithMotionModel() {
   }
 
   // Optimize frame pose with all matches
-  if (OPTIMIZE_MODE == 0) {
-    CeresOptimizer::PoseOptimization(&current_frame_);
-  } else {
-    Optimizer::PoseOptimization(&current_frame_);
-  }
+  CeresOptimizer::PoseOptimization(&current_frame_);
 
   // Discard outliers
   int nmatchesMap = 0;
@@ -697,11 +680,7 @@ bool Tracking::TrackLocalMap() {
   SearchLocalPoints();
 
   // Optimize Pose
-  if (OPTIMIZE_MODE == 0) {
-    CeresOptimizer::PoseOptimization(&current_frame_);
-  } else {
-    Optimizer::PoseOptimization(&current_frame_);
-  }
+  CeresOptimizer::PoseOptimization(&current_frame_);
   n_matches_inliers_ = 0;
 
   // Update MapPoints Statistics
@@ -786,6 +765,7 @@ bool Tracking::NeedNewKeyFrame() {
       return true;
     } else {
       local_mapper_->InterruptBA();
+      return false;
     }
   } else {
     return false;
@@ -1084,7 +1064,7 @@ bool Tracking::Relocalization() {
             current_frame_.map_points_[j] = NULL;
         }
 
-        int nGood = Optimizer::PoseOptimization(&current_frame_);
+        int nGood = CeresOptimizer::PoseOptimization(&current_frame_);
 
         if (nGood < 10) continue;
 
@@ -1100,7 +1080,7 @@ bool Tracking::Relocalization() {
               100);
 
           if (nadditional + nGood >= 50) {
-            nGood = Optimizer::PoseOptimization(&current_frame_);
+            nGood = CeresOptimizer::PoseOptimization(&current_frame_);
 
             // If many inliers but still not enough, search by projection again
             // in a narrower window the camera has been already optimized with
@@ -1118,7 +1098,7 @@ bool Tracking::Relocalization() {
 
               // Final optimization
               if (nGood + nadditional >= 50) {
-                nGood = Optimizer::PoseOptimization(&current_frame_);
+                nGood = CeresOptimizer::PoseOptimization(&current_frame_);
 
                 for (int io = 0; io < current_frame_.N_; io++) {
                   if (current_frame_.is_outliers_[io]) {

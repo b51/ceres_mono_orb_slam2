@@ -164,6 +164,28 @@ class PoseErrorTerm {
   const Eigen::Matrix2d sqrt_information_;
 };
 
+// StopFlagCallback reference to
+// http://ceres-solver.org/nnls_solving.html#_CPPv2N5ceres17IterationCallbackE
+class StopFlagCallback : public ceres::IterationCallback {
+ public:
+  explicit StopFlagCallback(bool* stop_flag) : stop_flag_(stop_flag) {}
+
+  ceres::CallbackReturnType operator()(const ceres::IterationSummary& summary) {
+    LOG(INFO) << " iteration callback ";
+    if (stop_flag_) {
+      if (*stop_flag_) {
+        return ceres::SOLVER_TERMINATE_SUCCESSFULLY;
+      } else {
+        return ceres::SOLVER_CONTINUE;
+      }
+    }
+    return ceres::SOLVER_CONTINUE;
+  }
+
+ private:
+  const bool* stop_flag_;
+};
+
 class CeresOptimizer {
  public:
   void static BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
