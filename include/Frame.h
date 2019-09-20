@@ -5,7 +5,7 @@
  *            FileName: Frame.h
  *
  *          Created On: Wed 04 Sep 2019 03:46:11 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**

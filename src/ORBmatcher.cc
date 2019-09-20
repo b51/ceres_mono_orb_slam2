@@ -802,26 +802,13 @@ int ORBmatcher::Fuse(KeyFrame* pKF, const vector<MapPoint*>& vpMapPoints,
 
       if (kpLevel < nPredictedLevel - 1 || kpLevel > nPredictedLevel) continue;
 
-      if (pKF->mvuRight[idx] >= 0) {
-        // Check reprojection error in stereo
-        const float& kpx = kp.pt.x;
-        const float& kpy = kp.pt.y;
-        const float& kpr = pKF->mvuRight[idx];
-        const float ex = u - kpx;
-        const float ey = v - kpy;
-        const float er = ur - kpr;
-        const float e2 = ex * ex + ey * ey + er * er;
+      const float& kpx = kp.pt.x;
+      const float& kpy = kp.pt.y;
+      const float ex = u - kpx;
+      const float ey = v - kpy;
+      const float e2 = ex * ex + ey * ey;
 
-        if (e2 * pKF->inv_level_sigma2s_[kpLevel] > 7.8) continue;
-      } else {
-        const float& kpx = kp.pt.x;
-        const float& kpy = kp.pt.y;
-        const float ex = u - kpx;
-        const float ey = v - kpy;
-        const float e2 = ex * ex + ey * ey;
-
-        if (e2 * pKF->inv_level_sigma2s_[kpLevel] > 5.99) continue;
-      }
+      if (e2 * pKF->inv_level_sigma2s_[kpLevel] > 5.99) continue;
 
       const cv::Mat& dKF = pKF->descriptors_.row(idx);
 
@@ -1440,6 +1427,7 @@ int ORBmatcher::DescriptorDistance(const cv::Mat& a, const cv::Mat& b) {
 
   int dist = 0;
 
+  // a: 1 row, 32 cols = uint8_t * 32
   for (int i = 0; i < 8; i++, pa++, pb++) {
     unsigned int v = *pa ^ *pb;
     v = v - ((v >> 1) & 0x55555555);

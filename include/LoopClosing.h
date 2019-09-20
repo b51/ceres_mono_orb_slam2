@@ -5,7 +5,7 @@
  *            FileName: LoopClosing.h
  *
  *          Created On: Wed 04 Sep 2019 05:35:12 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**

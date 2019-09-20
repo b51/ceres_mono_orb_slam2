@@ -5,7 +5,7 @@
  *            FileName: MonoORBSlam.cc
  *
  *          Created On: Tue 03 Sep 2019 06:27:56 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 

@@ -5,7 +5,7 @@
  *            FileName: MapPoint.h
  *
  *          Created On: Thu 05 Sep 2019 10:38:24 AM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**

@@ -5,7 +5,7 @@
  *            FileName: Viewer.cc
  *
  *          Created On: Wed 04 Sep 2019 06:59:03 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**

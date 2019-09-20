@@ -5,7 +5,7 @@
  *            FileName: MapPoint.cc
  *
  *          Created On: Thu 05 Sep 2019 10:37:43 AM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**

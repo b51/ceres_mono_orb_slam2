@@ -4,8 +4,7 @@
  *                Mail: b51live@gmail.com
  *            FileName: LoopClosing.cc
  *
- *          Created On: Wed 04 Sep 2019 05:42:10 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**

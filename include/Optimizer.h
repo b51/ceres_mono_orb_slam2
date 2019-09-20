@@ -1,13 +1,3 @@
-/*************************************************************************
- *
- *              Author: b51
- *                Mail: b51live@gmail.com
- *            FileName: Optimizer.h
- *
- *          Created On: Thu 05 Sep 2019 11:07:56 AM CST
- *     Licensed under The MIT License [see LICENSE for details]
- *
- ************************************************************************/
 /**
  * This file is part of ORB-SLAM2.
  *

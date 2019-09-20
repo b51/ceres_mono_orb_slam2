@@ -5,7 +5,7 @@
  *            FileName: Initializer.h
  *
  *          Created On: Thu 05 Sep 2019 10:03:56 AM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**
@@ -27,6 +27,7 @@
  * You should have received a copy of the GNU General Public License
  * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
  */
+
 #ifndef INITIALIZER_H_
 #define INITIALIZER_H_
 

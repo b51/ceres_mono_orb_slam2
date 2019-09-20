@@ -5,10 +5,9 @@
  *            FileName: Frame.cc
  *
  *          Created On: Wed 04 Sep 2019 03:45:52 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
-
 /**
  * This file is part of ORB-SLAM2.
  *

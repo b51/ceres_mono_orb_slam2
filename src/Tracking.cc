@@ -1,3 +1,13 @@
+/*************************************************************************
+ *
+ *              Author: b51
+ *                Mail: b51live@gmail.com
+ *            FileName: Tracking.cc
+ *
+ *          Created On: Tue 9 Sep 2019 03:51:14 PM CST
+ *     Licensed under The GPLv3 License [see LICENSE for details]
+ *
+ ************************************************************************/
 /**
  * This file is part of ORB-SLAM2.
  *
@@ -36,8 +46,6 @@
 #include "CeresOptimizer.h"
 #include "Optimizer.h"
 #include "PnPsolver.h"
-
-#define OPTIMIZE_MODE 0
 
 namespace ORB_SLAM2 {
 

@@ -5,7 +5,7 @@
  *            FileName: CeresOptimizer.h
  *
  *          Created On: Sat 07 Sep 2019 05:12:19 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 
@@ -171,7 +171,6 @@ class StopFlagCallback : public ceres::IterationCallback {
   explicit StopFlagCallback(bool* stop_flag) : stop_flag_(stop_flag) {}
 
   ceres::CallbackReturnType operator()(const ceres::IterationSummary& summary) {
-    LOG(INFO) << " iteration callback ";
     if (stop_flag_) {
       if (*stop_flag_) {
         return ceres::SOLVER_TERMINATE_SUCCESSFULLY;
@@ -202,6 +201,10 @@ class CeresOptimizer {
 
   void static LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
                                     Map* map);
+
+  bool static CheckOutliers(Eigen::Matrix3d K, Eigen::Vector2d& observation,
+                            Eigen::Vector3d& world_pose, Eigen::Vector3d& tcw,
+                            Eigen::Quaterniond& qcw, double thres);
 
   int static CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
                            Eigen::Quaterniond& qcw);

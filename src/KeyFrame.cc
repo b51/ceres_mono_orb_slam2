@@ -5,7 +5,7 @@
  *            FileName: KeyFrame.cc
  *
  *          Created On: Wed 04 Sep 2019 12:02:32 PM CST
- *     Licensed under The MIT License [see LICENSE for details]
+ *     Licensed under The GPLv3 License [see LICENSE for details]
  *
  ************************************************************************/
 /**
