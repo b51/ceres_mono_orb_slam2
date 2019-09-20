@@ -1,3 +1,13 @@
+/*************************************************************************
+ *
+ *              Author: b51
+ *                Mail: b51live@gmail.com
+ *            FileName: Sim3Solver.h
+ *
+ *          Created On: Fri 20 Sep 2019 05:49:35 PM CST
+ *     Licensed under The GPLv3 License [see LICENSE for details]
+ *
+ ************************************************************************/
 /**
  * This file is part of ORB-SLAM2.
  *
@@ -30,17 +40,17 @@ namespace ORB_SLAM2 {
 
 class Sim3Solver {
  public:
-  Sim3Solver(KeyFrame* pKF1, KeyFrame* pKF2,
-             const std::vector<MapPoint*>& vpMatched12,
-             const bool bFixScale = true);
+  Sim3Solver(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
+             const std::vector<MapPoint*>& matched_points_1_in_2,
+             const bool is_fixed_scale = true);
 
-  void SetRansacParameters(double probability = 0.99, int minInliers = 6,
-                           int maxIterations = 300);
+  void SetRansacParameters(double probability = 0.99, int min_inliers = 6,
+                           int max_iterations = 300);
 
-  cv::Mat find(std::vector<bool>& vbInliers12, int& nInliers);
+  cv::Mat find(std::vector<bool>& vbInliers12, int& n_inliers);
 
-  cv::Mat iterate(int nIterations, bool& bNoMore, std::vector<bool>& vbInliers,
-                  int& nInliers);
+  cv::Mat iterate(int n_iterations, bool& is_no_more,
+                  std::vector<bool>& is_inliers, int& n_inliers);
 
   cv::Mat GetEstimatedRotation();
   cv::Mat GetEstimatedTranslation();
@@ -60,67 +70,65 @@ class Sim3Solver {
 
  protected:
   // KeyFrames and matches
-  KeyFrame* mpKF1;
-  KeyFrame* mpKF2;
+  KeyFrame* keyframe_1_;
+  KeyFrame* keyframe_2_;
 
-  std::vector<cv::Mat> mvX3Dc1;
-  std::vector<cv::Mat> mvX3Dc2;
-  std::vector<MapPoint*> mvpMapPoints1;
-  std::vector<MapPoint*> mvpMapPoints2;
-  std::vector<MapPoint*> mvpMatches12;
-  std::vector<size_t> mvnIndices1;
-  std::vector<size_t> mvSigmaSquare1;
-  std::vector<size_t> mvSigmaSquare2;
-  std::vector<size_t> mvnMaxError1;
-  std::vector<size_t> mvnMaxError2;
+  std::vector<cv::Mat> X3Dsc1_;
+  std::vector<cv::Mat> X3Dsc2_;
+  std::vector<MapPoint*> map_points_1_;
+  std::vector<MapPoint*> map_points_2_;
+  std::vector<MapPoint*> matched_points_1_in_2_;
+  std::vector<size_t> matched_indices_1_;
+  std::vector<size_t> max_errors_1_;
+  std::vector<size_t> max_errors_2_;
 
-  int N;
-  int mN1;
+  int N_;
+  int N1_;
 
   // Current Estimation
-  cv::Mat mR12i;
-  cv::Mat mt12i;
-  float ms12i;
-  cv::Mat mT12i;
-  cv::Mat mT21i;
-  std::vector<bool> mvbInliersi;
-  int mnInliersi;
+  cv::Mat R12i_;
+  cv::Mat t12i_;
+  float scale_12_i_;
+  cv::Mat T12i_;
+  cv::Mat T21i_;
+  std::vector<bool> is_inliers_i_;
+  int n_inliers_i_;
 
   // Current Ransac State
-  int mnIterations;
-  std::vector<bool> mvbBestInliers;
-  int mnBestInliers;
-  cv::Mat mBestT12;
-  cv::Mat mBestRotation;
-  cv::Mat mBestTranslation;
-  float mBestScale;
+  int n_iterations_;
+  std::vector<bool> is_best_inliers_;
+  int n_best_inliers_;
+  cv::Mat best_T12_;
+  cv::Mat best_rotation_;
+  cv::Mat best_translation_;
+  float best_scale_;
 
   // Scale is fixed to 1 in the stereo/RGBD case
-  bool mbFixScale;
+  bool is_fixed_scale_;
 
   // Indices for random selection
-  std::vector<size_t> mvAllIndices;
+  std::vector<size_t> all_indices_;
 
   // Projections
-  std::vector<cv::Mat> mvP1im1;
-  std::vector<cv::Mat> mvP2im2;
+  std::vector<cv::Mat> points_1_in_im_1_;
+  std::vector<cv::Mat> points_2_in_im_2_;
 
   // RANSAC probability
-  double mRansacProb;
+  double ransac_probability_;
 
   // RANSAC min inliers
-  int mRansacMinInliers;
+  int ransac_min_inliers_;
 
   // RANSAC max iterations
-  int mRansacMaxIts;
+  int ransac_max_iterations_;
 
-  // Threshold inlier/outlier. e = dist(Pi,T_ij*Pj)^2 < 5.991*mSigma2
-  float mTh;
-  float mSigma2;
+  // Threshold inlier/outlier. e = dist(Pi,T_ij*Pj)^2 < 5.991*sigma2
+  // float thres_;
+  // float sigma2_;
 
   // Calibration
-  cv::Mat mK1;
-  cv::Mat mK2;
+  cv::Mat K1_;
+  cv::Mat K2_;
 };
 
 }  // namespace ORB_SLAM2

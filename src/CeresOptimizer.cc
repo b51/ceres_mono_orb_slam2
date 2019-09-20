@@ -306,16 +306,17 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
     for (int i = 0; i < N; i++) {
       MapPoint* map_point = frame->map_points_[i];
       if (map_point) {
+        n_initial_correspondences++;
         frame->is_outliers_[i] = false;
         // Monocular observation
         cv::Mat Xw = map_point->GetWorldPos();
         Eigen::Vector3d point_pose(Xw.at<float>(0), Xw.at<float>(1),
                                    Xw.at<float>(2));
-        n_initial_correspondences++;
 
         const cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
         Eigen::Vector2d observation(undistort_keypoint.pt.x,
                                     undistort_keypoint.pt.y);
+
         const float invSigma2 =
             frame->inv_level_sigma2s_[undistort_keypoint.octave];
         Eigen::Matrix2d sqrt_information =
@@ -460,6 +461,8 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
         problem.SetParameterization(
             ided_local_keyframes[keyframe].block<4, 1>(3, 0).data(),
             quaternion_local_parameterization);
+
+        // must set first keyframe to constant
         if (keyframe->id_ == 0) {
           problem.SetParameterBlockConstant(
               ided_local_keyframes[keyframe].block<3, 1>(0, 0).data());

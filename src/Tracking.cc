@@ -983,6 +983,7 @@ void Tracking::UpdateLocalKeyFrames() {
 }
 
 bool Tracking::Relocalization() {
+  LOG(WARNING) << " Relocalization Enter ";
   // Compute Bag of Words Vector
   current_frame_.ComputeBoW();
 
@@ -991,6 +992,9 @@ bool Tracking::Relocalization() {
   // relocalisation
   vector<KeyFrame*> candidate_keyframes =
       keyframe_database_->DetectRelocalizationCandidates(&current_frame_);
+
+  LOG(INFO) << " Relocalization candidate keyframe size: "
+            << candidate_keyframes.size();
 
   if (candidate_keyframes.empty()) {
     return false;
@@ -1127,6 +1131,7 @@ bool Tracking::Relocalization() {
     }
   }
 
+  LOG(INFO) << " Relocalization done, is matched? " << is_match;
   if (!is_match) {
     return false;
   } else {

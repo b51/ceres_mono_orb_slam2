@@ -144,6 +144,7 @@ bool LoopClosing::DetectLoop() {
       keyframe_database_->DetectLoopCandidates(current_keyframe_, minScore);
 
   // If there are no loop candidates, just add new keyframe and return false
+  LOG(INFO) << " candidates keyframes size: " << candidate_keyframes.size();
   if (candidate_keyframes.empty()) {
     keyframe_database_->add(current_keyframe_);
     consistent_groups_.clear();
@@ -397,7 +398,7 @@ bool LoopClosing::ComputeSim3() {
 }
 
 void LoopClosing::CorrectLoop() {
-  std::cout << "Loop detected!" << std::endl;
+  LOG(INFO) << "Loop detected!" << std::endl;
 
   // Send a stop signal to Local Mapping
   // Avoid new keyframes are inserted while correcting the loop
