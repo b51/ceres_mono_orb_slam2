@@ -56,25 +56,27 @@ class Sim3Solver {
   cv::Mat GetEstimatedTranslation();
   float GetEstimatedScale();
 
- protected:
-  void ComputeCentroid(cv::Mat& P, cv::Mat& Pr, cv::Mat& C);
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  void ComputeSim3(cv::Mat& P1, cv::Mat& P2);
+ protected:
+  void ComputeCentroid(Eigen::Matrix3d& P, Eigen::Matrix3d& Pr, Eigen::Vector3d& C);
+
+  void ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2);
 
   void CheckInliers();
 
-  void Project(const std::vector<cv::Mat>& vP3Dw, std::vector<cv::Mat>& vP2D,
-               cv::Mat Tcw, cv::Mat K);
-  void FromCameraToImage(const std::vector<cv::Mat>& vP3Dc,
-                         std::vector<cv::Mat>& vP2D, cv::Mat K);
+  void Project(const std::vector<Eigen::Vector3d>& P3Dsw, std::vector<Eigen::Vector2d>& P2Ds,
+               Eigen::Matrix4d Tcw, Eigen::Matrix3d& K);
+  void FromCameraToImage(const std::vector<Eigen::Vector3d>& vP3Dc,
+                         std::vector<Eigen::Vector2d>& P2Ds, Eigen::Matrix3d& K);
 
  protected:
   // KeyFrames and matches
   KeyFrame* keyframe_1_;
   KeyFrame* keyframe_2_;
 
-  std::vector<cv::Mat> X3Dsc1_;
-  std::vector<cv::Mat> X3Dsc2_;
+  std::vector<Eigen::Vector3d> X3Dsc1_;
+  std::vector<Eigen::Vector3d> X3Dsc2_;
   std::vector<MapPoint*> map_points_1_;
   std::vector<MapPoint*> map_points_2_;
   std::vector<MapPoint*> matched_points_1_in_2_;
@@ -86,11 +88,11 @@ class Sim3Solver {
   int N1_;
 
   // Current Estimation
-  cv::Mat R12i_;
-  cv::Mat t12i_;
+  Eigen::Matrix3d R12i_;
+  Eigen::Vector3d t12i_;
   float scale_12_i_;
-  cv::Mat T12i_;
-  cv::Mat T21i_;
+  Eigen::Matrix4d T12i_;
+  Eigen::Matrix4d T21i_;
   std::vector<bool> is_inliers_i_;
   int n_inliers_i_;
 
@@ -98,9 +100,9 @@ class Sim3Solver {
   int n_iterations_;
   std::vector<bool> is_best_inliers_;
   int n_best_inliers_;
-  cv::Mat best_T12_;
-  cv::Mat best_rotation_;
-  cv::Mat best_translation_;
+  Eigen::Matrix4d best_T12_;
+  Eigen::Matrix3d best_rotation_;
+  Eigen::Vector3d best_translation_;
   float best_scale_;
 
   // Scale is fixed to 1 in the stereo/RGBD case
@@ -110,8 +112,8 @@ class Sim3Solver {
   std::vector<size_t> all_indices_;
 
   // Projections
-  std::vector<cv::Mat> points_1_in_im_1_;
-  std::vector<cv::Mat> points_2_in_im_2_;
+  std::vector<Eigen::Vector2d> points_1_in_im_1_;
+  std::vector<Eigen::Vector2d> points_2_in_im_2_;
 
   // RANSAC probability
   double ransac_probability_;
@@ -127,8 +129,8 @@ class Sim3Solver {
   // float sigma2_;
 
   // Calibration
-  cv::Mat K1_;
-  cv::Mat K2_;
+  Eigen::Matrix3d K1_;
+  Eigen::Matrix3d K2_;
 };
 
 }  // namespace ORB_SLAM2

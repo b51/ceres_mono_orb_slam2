@@ -54,6 +54,8 @@ class Initializer {
                   Eigen::Matrix3d& R21, Eigen::Vector3d& t21,
                   vector<Eigen::Vector3d>& vP3D, vector<bool>& is_triangulated);
 
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
  private:
   void FindHomography(vector<bool>& vbMatchesInliers, float& score,
                       Eigen::Matrix3d& H21);
