@@ -62,3 +62,30 @@ cv::Mat MatEigenConverter::Vector3dToMat(const Eigen::Vector3d& t) {
   }
   return cv_t.clone();
 }
+
+Eigen::Matrix<double, 7, 1> MatEigenConverter::MatToMatrix_7_1(
+    const cv::Mat& pose) {
+  Eigen::Matrix<double, 7, 1> Tcw_7_1;
+  Eigen::Matrix3d R;
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      R(i, j) = pose.at<float>(i, j);
+    }
+    Tcw_7_1[i] = pose.at<float>(i, 3);
+  }
+  // Eigen Quaternion coeffs output [x, y, z, w]
+  Tcw_7_1.block<4, 1>(3, 0) = Eigen::Quaterniond(R).coeffs();
+  return Tcw_7_1;
+}
+
+cv::Mat MatEigenConverter::Matrix_7_1_ToMat(
+    const Eigen::Matrix<double, 7, 1>& Tcw_7_1) {
+  Eigen::Quaterniond q(Tcw_7_1[6], Tcw_7_1[3], Tcw_7_1[4], Tcw_7_1[5]);
+  Eigen::Matrix3d R = q.normalized().toRotationMatrix();
+  Eigen::Matrix4d _pose = Eigen::Matrix4d::Identity();
+  _pose.block<3, 3>(0, 0) = R;
+  _pose.block<3, 1>(0, 3) = Tcw_7_1.block<3, 1>(0, 0);
+
+  cv::Mat pose = Matrix4dToMat(_pose);
+  return pose.clone();
+}

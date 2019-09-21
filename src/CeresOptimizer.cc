@@ -14,38 +14,9 @@
 #include <ceres/local_parameterization.h>
 #include <ceres/solver.h>
 
-#include "Converter.h"
+#include "MatEigenConverter.h"
 
 namespace ORB_SLAM2 {
-
-Eigen::Matrix<double, 7, 1> MatToEigen_7_1(cv::Mat pose) {
-  Eigen::Matrix<double, 7, 1> Tcw_7_1;
-  Eigen::Matrix<double, 3, 3> R;
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
-      R(i, j) = pose.at<float>(i, j);
-    }
-    Tcw_7_1[i] = pose.at<float>(i, 3);
-  }
-  // Eigen Quaternion coeffs output [x, y, z, w]
-  Tcw_7_1.block<4, 1>(3, 0) = Eigen::Quaterniond(R).coeffs();
-  return Tcw_7_1;
-}
-
-cv::Mat Eigen_7_1_ToMat(Eigen::Matrix<double, 7, 1>& Tcw_7_1) {
-  cv::Mat pose = cv::Mat(4, 4, CV_32F);
-  Eigen::Quaterniond q(Tcw_7_1[6], Tcw_7_1[3], Tcw_7_1[4], Tcw_7_1[5]);
-  Eigen::Matrix3d R = q.normalized().toRotationMatrix();
-  Eigen::Matrix<double, 4, 4> _pose = Eigen::Matrix<double, 4, 4>::Identity();
-  _pose.block<3, 3>(0, 0) = R;
-  _pose.block<3, 1>(0, 3) = Tcw_7_1.block<3, 1>(0, 0);
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      pose.at<float>(i, j) = _pose(i, j);
-    }
-  }
-  return pose.clone();
-}
 
 void CeresOptimizer::GlobalBundleAdjustemnt(Map* map, int n_iterations,
                                             bool* stop_flag,
@@ -78,14 +49,10 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     Eigen::Matrix<double, 7, 1> keyframe_Tcw;
 
     // Get keyframe Poses
-    cv::Mat _kf_pose = keyframe->GetPose();
-    Eigen::Matrix<double, 3, 3> keyframe_R;
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-        keyframe_R(i, j) = _kf_pose.at<float>(i, j);
-      }
-      keyframe_Tcw[i] = _kf_pose.at<float>(i, 3);
-    }
+    Eigen::Matrix4d kf_pose =
+        MatEigenConverter::MatToMatrix4d(keyframe->GetPose());
+    Eigen::Matrix3d keyframe_R = kf_pose.block<3, 3>(0, 0);
+    keyframe_Tcw.block<3, 1>(0, 0) = kf_pose.block<3, 1>(0, 3);
 
     // Eigen Quaternion coeffs output [x, y, z, w]
     keyframe_Tcw.block<4, 1>(3, 0) = Eigen::Quaterniond(keyframe_R).coeffs();
@@ -113,7 +80,8 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
       continue;
     }
 
-    ided_map_point_pose[i] = Converter::toVector3d(map_point->GetWorldPos());
+    ided_map_point_pose[i] =
+        MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
 
     const map<KeyFrame*, size_t> observations = map_point->GetObservations();
 
@@ -184,7 +152,7 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     }
     Eigen::Matrix<double, 7, 1> Tcw = it->second;
     // Eigen Quaterniond constructed with [w, x, y, z], not same as coeffs
-    cv::Mat pose = Eigen_7_1_ToMat(Tcw);
+    cv::Mat pose = MatEigenConverter::Matrix_7_1_ToMat(Tcw);
     if (n_loop_keyframe == 0) {
       it->first->SetPose(pose);
     } else {
@@ -205,9 +173,7 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
       continue;
     }
 
-    cv::Mat pose = cv::Mat(3, 1, CV_32F);
-    for (int ii = 0; ii < 3; ii++)
-      pose.at<float>(ii) = ided_map_point_pose[i](ii);
+    cv::Mat pose = MatEigenConverter::Vector3dToMat(ided_map_point_pose[i]);
 
     if (n_loop_keyframe == 0) {
       map_point->SetWorldPos(pose);
@@ -245,9 +211,8 @@ int CeresOptimizer::CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
   for (int i = 0; i < N; i++) {
     MapPoint* map_point = frame->map_points_[i];
     if (map_point) {
-      cv::Mat Xw = map_point->GetWorldPos();
-      Eigen::Vector3d world_pose(Xw.at<float>(0), Xw.at<float>(1),
-                                 Xw.at<float>(2));
+      Eigen::Vector3d world_pose =
+          MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
       cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
       Eigen::Vector2d observation(undistort_keypoint.pt.x,
                                   undistort_keypoint.pt.y);
@@ -279,19 +244,15 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
   {
     unique_lock<mutex> lock(MapPoint::global_mutex_);
     // Get frame Pose
-    cv::Mat _frame_pose = frame->Tcw_.clone();
-    Eigen::Matrix<double, 3, 3> frame_R;
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-        frame_R(i, j) = _frame_pose.at<float>(i, j);
-      }
-      frame_tcw[i] = _frame_pose.at<float>(i, 3);
-    }
+    Eigen::Matrix4d frame_pose =
+        MatEigenConverter::MatToMatrix4d(frame->Tcw_.clone());
+    Eigen::Matrix3d frame_R;
+    frame_R = frame_pose.block<3, 3>(0, 0);
+    frame_tcw = frame_pose.block<3, 1>(0, 3);
     // Eigen Quaternion coeffs output [x, y, z, w]
     frame_qcw = Eigen::Quaterniond(frame_R);
 
-    Eigen::Matrix3d K;
-    K << frame->fx_, 0., frame->cx_, 0., frame->fy_, frame->cy_, 0., 0., 1.;
+    Eigen::Matrix3d K = MatEigenConverter::MatToMatrix3d(frame->K_);
 
     // ceres::LossFunction* loss_function = new ceres::CauchyLoss(0.5);
     ceres::LossFunction* loss_function = new ceres::HuberLoss(sqrt(5.991));
@@ -309,9 +270,8 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
         n_initial_correspondences++;
         frame->is_outliers_[i] = false;
         // Monocular observation
-        cv::Mat Xw = map_point->GetWorldPos();
-        Eigen::Vector3d point_pose(Xw.at<float>(0), Xw.at<float>(1),
-                                   Xw.at<float>(2));
+        Eigen::Vector3d point_pose =
+            MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
 
         const cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
         Eigen::Vector2d observation(undistort_keypoint.pt.x,
@@ -337,15 +297,10 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
   }
 
   Eigen::Matrix3d R = frame_qcw.normalized().toRotationMatrix();
-  Eigen::Matrix<double, 4, 4> _pose = Eigen::Matrix<double, 4, 4>::Identity();
+  Eigen::Matrix4d _pose = Eigen::Matrix4d::Identity();
   _pose.block<3, 3>(0, 0) = R;
   _pose.block<3, 1>(0, 3) = frame_tcw;
-  cv::Mat pose = cv::Mat(4, 4, CV_32F);
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      pose.at<float>(i, j) = _pose(i, j);
-    }
-  }
+  cv::Mat pose = MatEigenConverter::Matrix4dToMat(_pose);
   frame->SetPose(pose);
   return n_initial_correspondences - n_bad;
 }
@@ -355,7 +310,8 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
   // Local KeyFrames: First Breadth Search from Current Keyframe
   // ided keyframe for pose recovery after optimize
   std::map<KeyFrame*, Eigen::Matrix<double, 7, 1>> ided_local_keyframes;
-  ided_local_keyframes[keyframe] = MatToEigen_7_1(keyframe->GetPose());
+  ided_local_keyframes[keyframe] =
+      MatEigenConverter::MatToMatrix_7_1(keyframe->GetPose());
   keyframe->n_BA_local_for_keyframe_ = keyframe->id_;
 
   const std::vector<KeyFrame*> neighbor_keyframes =
@@ -366,7 +322,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
     neighbor_keyframe->n_BA_local_for_keyframe_ = keyframe->id_;
     if (!neighbor_keyframe->isBad()) {
       ided_local_keyframes[neighbor_keyframe] =
-          MatToEigen_7_1(neighbor_keyframe->GetPose());
+          MatEigenConverter::MatToMatrix_7_1(neighbor_keyframe->GetPose());
     }
   }
 
@@ -384,7 +340,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
         if (!map_point->isBad()) {
           if (map_point->n_BA_local_for_keyframe_ != keyframe->id_) {
             ided_local_map_points[map_point] =
-                Converter::toVector3d(map_point->GetWorldPos());
+                MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
             map_point->n_BA_local_for_keyframe_ = keyframe->id_;
           }
         }
@@ -408,7 +364,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
         keyframe_i->n_BA_fixed_for_keyframe_ = keyframe->id_;
         if (!keyframe_i->isBad()) {
           ided_fixed_keyframes[keyframe_i] =
-              MatToEigen_7_1(keyframe_i->GetPose());
+              MatEigenConverter::MatToMatrix_7_1(keyframe_i->GetPose());
         }
       }
     }  // for loop end of observations
@@ -556,14 +512,14 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
        it++) {
     KeyFrame* keyframe = it->first;
     Eigen::Matrix<double, 7, 1> Tcw = it->second;
-    cv::Mat pose = Eigen_7_1_ToMat(Tcw);
+    cv::Mat pose = MatEigenConverter::Matrix_7_1_ToMat(Tcw);
     keyframe->SetPose(pose);
   }
   // MapPoints
   for (auto it = ided_local_map_points.begin();
        it != ided_local_map_points.end(); it++) {
     MapPoint* map_point = it->first;
-    map_point->SetWorldPos(Converter::toCvMat(it->second));
+    map_point->SetWorldPos(MatEigenConverter::Vector3dToMat(it->second));
     map_point->UpdateNormalAndDepth();
   }
 }

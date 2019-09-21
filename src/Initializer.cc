@@ -32,6 +32,7 @@
 
 #include "lib/DBoW2/DUtils/Random.h"
 
+#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 #include "Optimizer.h"
 
@@ -42,11 +43,7 @@ namespace ORB_SLAM2 {
 
 Initializer::Initializer(const Frame& reference_frame, float sigma,
                          int iterations) {
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
-      K_(i, j) = reference_frame.K_.at<float>(i, j);
-    }
-  }
+  K_ = MatEigenConverter::MatToMatrix3d(reference_frame.K_);
 
   reference_keypoints_ = reference_frame.undistort_keypoints_;
 
@@ -709,16 +706,16 @@ void Initializer::Triangulate(const cv::KeyPoint& kp1, const cv::KeyPoint& kp2,
                               const Eigen::Matrix<double, 3, 4>& P1,
                               const Eigen::Matrix<double, 3, 4>& P2,
                               Eigen::Vector3d& x3D) {
-  Eigen::Matrix<double, 4, 4> A;
+  Eigen::Matrix4d A;
 
   A.row(0) = kp1.pt.x * P1.row(2) - P1.row(0);
   A.row(1) = kp1.pt.y * P1.row(2) - P1.row(1);
   A.row(2) = kp2.pt.x * P2.row(2) - P2.row(0);
   A.row(3) = kp2.pt.y * P2.row(2) - P2.row(1);
 
-  Eigen::JacobiSVD<Eigen::Matrix<double, 4, 4>> svd(
+  Eigen::JacobiSVD<Eigen::Matrix4d> svd(
       A, Eigen::ComputeFullU | Eigen::ComputeFullV);
-  Eigen::Matrix<double, 4, 1> X = svd.matrixV().col(3);
+  Eigen::Vector4d X = svd.matrixV().col(3);
   x3D = X.block<3, 1>(0, 0) / X(3);
 }
 

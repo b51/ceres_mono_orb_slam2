@@ -103,6 +103,8 @@ class Tracking {
 
   void Reset();
 
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
  protected:
   // Main tracking function. It is independent of the input sensor.
   void Track();

@@ -36,6 +36,7 @@
 #include "CeresOptimizer.h"
 #include "LoopClosing.h"
 #include "ORBmatcher.h"
+#include "MatEigenConverter.h"
 
 namespace ORB_SLAM2 {
 
@@ -373,8 +374,7 @@ void LocalMapping::CreateNewMapPoints() {
       }
 
       // Triangulation is succesfull
-      Eigen::Vector3d _x3D;
-      _x3D << x3D.at<float>(0), x3D.at<float>(1), x3D.at<float>(2);
+      Eigen::Vector3d _x3D = MatEigenConverter::MatToVector3d(x3D);
       MapPoint* map_point = new MapPoint(_x3D, current_keyframe_, map_);
 
       map_point->AddObservation(current_keyframe_, idx1);

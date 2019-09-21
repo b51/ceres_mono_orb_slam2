@@ -296,6 +296,7 @@ bool LoopClosing::ComputeSim3() {
 
       Sim3Solver* pSolver = sim3_solvers[i];
       cv::Mat Scm = pSolver->iterate(5, is_no_more, is_inliers, n_inliers);
+      LOG(INFO) << "Scm: " << Scm;
 
       // If Ransac reachs max. iterations discard keyframe
       if (is_no_more) {
@@ -341,6 +342,7 @@ bool LoopClosing::ComputeSim3() {
     }
   }
 
+  LOG(INFO) << " is matched? " << is_match;
   if (!is_match) {
     for (int i = 0; i < n_initial_candidates; i++)
       enough_consistent_candidates_[i]->SetErase();
@@ -381,6 +383,7 @@ bool LoopClosing::ComputeSim3() {
     }
   }
 
+  LOG(INFO) << "n_total_matches: " << n_total_matches;
   if (n_total_matches >= 40) {
     for (int i = 0; i < n_initial_candidates; i++) {
       if (enough_consistent_candidates_[i] != matched_keyframe_) {

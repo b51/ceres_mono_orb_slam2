@@ -37,10 +37,10 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
-#include "Converter.h"
 #include "FrameDrawer.h"
 #include "Initializer.h"
 #include "Map.h"
+#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 
 #include "CeresOptimizer.h"
@@ -440,18 +440,12 @@ void Tracking::MonocularInitialization() {
 
       // Set Frame Poses
       init_frame_.SetPose(cv::Mat::eye(4, 4, CV_32F));
-      cv::Mat Tcw = cv::Mat::eye(4, 4, CV_32F);
 
       // TODO(b51): Remove cv::Mat
-      Eigen::Matrix<double, 4, 4> _Tcw =
-          Eigen::Matrix<double, 4, 4>::Identity();
+      Eigen::Matrix4d _Tcw = Eigen::Matrix4d::Identity();
       _Tcw.block<3, 3>(0, 0) = Rcw;
       _Tcw.block<3, 1>(0, 3) = tcw;
-      for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-          Tcw.at<float>(i, j) = _Tcw(i, j);
-        }
-      }
+      cv::Mat Tcw = MatEigenConverter::Matrix4dToMat(_Tcw);
 
       current_frame_.SetPose(Tcw);
 

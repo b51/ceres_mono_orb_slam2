@@ -29,6 +29,7 @@
  */
 
 #include "MapPoint.h"
+#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 
 #include <mutex>
@@ -88,13 +89,12 @@ MapPoint::MapPoint(const Eigen::Vector3d& pos, Map* map, Frame* frame,
       replaced_map_point_(NULL),
       map_(map) {
   world_pose_ = pos;
-  cv::Mat Ow = frame->GetCameraCenter();
-  Eigen::Vector3d _Ow;
-  _Ow << Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2);
-  normal_vector_ = world_pose_ - _Ow;
+  Eigen::Vector3d Ow =
+      MatEigenConverter::MatToVector3d(frame->GetCameraCenter());
+  normal_vector_ = world_pose_ - Ow;
   normal_vector_ = normal_vector_ / normal_vector_.norm();
 
-  Eigen::Vector3d PC = pos - _Ow;
+  Eigen::Vector3d PC = pos - Ow;
   const float dist = PC.norm();
   const int level = frame->undistort_keypoints_[idxF].octave;
   const float level_scale_factor = frame->scale_factors_[level];
@@ -119,19 +119,13 @@ void MapPoint::SetWorldPos(const cv::Mat& pos) {
 
 cv::Mat MapPoint::GetWorldPos() {
   unique_lock<mutex> lock(mutex_pose_);
-  cv::Mat _world_pose(3, 1, CV_32F);
-  for (int i = 0; i < 3; i++) {
-    _world_pose.at<float>(i) = world_pose_(i);
-  }
+  cv::Mat _world_pose = MatEigenConverter::Vector3dToMat(world_pose_);
   return _world_pose.clone();
 }
 
 cv::Mat MapPoint::GetNormal() {
   unique_lock<mutex> lock(mutex_pose_);
-  cv::Mat _normal_vector(3, 1, CV_32F);
-  for (int i = 0; i < 3; i++) {
-    _normal_vector.at<float>(i) = normal_vector_(i);
-  }
+  cv::Mat _normal_vector = MatEigenConverter::Vector3dToMat(normal_vector_);
   return _normal_vector.clone();
 }
 
@@ -363,17 +357,16 @@ void MapPoint::UpdateNormalAndDepth() {
                                         mend = observations.end();
        mit != mend; mit++) {
     KeyFrame* keyframe = mit->first;
-    cv::Mat Owi = keyframe->GetCameraCenter();
-    Eigen::Vector3d _Owi;
-    _Owi << Owi.at<float>(0), Owi.at<float>(1), Owi.at<float>(2);
-    Eigen::Vector3d normali = world_pose_ - _Owi;
+    Eigen::Vector3d Owi =
+        MatEigenConverter::MatToVector3d(keyframe->GetCameraCenter());
+    Eigen::Vector3d normali = world_pose_ - Owi;
     normal = normal + normali / normali.norm();
     n++;
   }
 
-  cv::Mat Ow = reference_keyframe->GetCameraCenter();
-  Eigen::Vector3d PC =
-      pos - Eigen::Vector3d(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
+  Eigen::Vector3d Ow =
+      MatEigenConverter::MatToVector3d(reference_keyframe->GetCameraCenter());
+  Eigen::Vector3d PC = pos - Ow;
   const float dist = PC.norm();
   const int level =
       reference_keyframe->undistort_keypoints_[observations[reference_keyframe]]
