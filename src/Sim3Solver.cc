@@ -180,8 +180,8 @@ cv::Mat Sim3Solver::iterate(int n_iterations, bool& is_no_more,
 
       int idx = available_indices[randi];
 
-      P3Dc1i.block<3, 1>(0, i) = X3Dsc1_[idx];
-      P3Dc2i.block<3, 1>(0, i) = X3Dsc2_[idx];
+      P3Dc1i.col(i) = X3Dsc1_[idx];
+      P3Dc2i.col(i) = X3Dsc2_[idx];
 
       available_indices[randi] = available_indices.back();
       available_indices.pop_back();
@@ -199,6 +199,8 @@ cv::Mat Sim3Solver::iterate(int n_iterations, bool& is_no_more,
       best_translation_ = t12i_;
       best_scale_ = scale_12_i_;
 
+      LOG(INFO) << "n_inliers_i_: " << n_inliers_i_
+                << " ransac_min_inliers_: " << ransac_min_inliers_;
       if (n_inliers_i_ > ransac_min_inliers_) {
         n_inliers = n_inliers_i_;
         for (int i = 0; i < N_; i++)
@@ -269,7 +271,7 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2) {
 
   // Step 4: Eigenvector of the highest eigenvalue
 
-  Eigen::EigenSolver<Eigen::Matrix4d> es;
+  Eigen::EigenSolver<Eigen::Matrix4d> es(N);
   Eigen::Vector4d eigen_values =
       es.eigenvalues().real();  // Get eigen values real part
   Eigen::Matrix4d eigen_vectors =
@@ -281,13 +283,15 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2) {
   Eigen::Vector4d q_wxyz = eigen_vectors.col(max_index);
 
   Eigen::Quaterniond q(q_wxyz[0], q_wxyz[1], q_wxyz[2], q_wxyz[3]);
-  R12i_ = q.toRotationMatrix();
+  R12i_ = q.normalized().toRotationMatrix();
+  LOG(INFO) << "Eigen rotation: " << R12i_;
 
-  /*
+  /**************************
+  cv::Mat _N = MatEigenConverter::Matrix4dToMat(N);
   cv::Mat eval, evec;
 
-  cv::eigen(N, eval, evec);  // evec[0] is the quaternion of the desired
-                             // rotation
+  cv::eigen(_N, eval, evec);  // evec[0] is the quaternion of the desired
+                              // rotation
 
   cv::Mat vec(1, 3, evec.type());
   (evec.row(0).colRange(1, 4))
@@ -300,10 +304,12 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2) {
   vec = 2 * ang * vec /
         norm(vec);  // Angle-axis representation. quaternion angle is the half
 
-  R12i_.create(3, 3, P1.type());
+  cv::Mat R12i = cv::Mat(3, 3, CV_32F);
 
-  cv::Rodrigues(vec, R12i_);  // computes the rotation matrix from angle-axis
-  */
+  cv::Rodrigues(vec, R12i);  // computes the rotation matrix from angle-axis
+  R12i_ = MatEigenConverter::MatToMatrix3d(R12i);
+  LOG(INFO) << "cv rotation: " << R12i_;
+  **************************/
 
   // Step 5: Rotate set 2
 
