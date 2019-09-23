@@ -284,7 +284,6 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2) {
 
   Eigen::Quaterniond q(q_wxyz[0], q_wxyz[1], q_wxyz[2], q_wxyz[3]);
   R12i_ = q.normalized().toRotationMatrix();
-  LOG(INFO) << "Eigen rotation: " << R12i_;
 
   /**************************
   cv::Mat _N = MatEigenConverter::Matrix4dToMat(N);
@@ -308,7 +307,6 @@ void Sim3Solver::ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2) {
 
   cv::Rodrigues(vec, R12i);  // computes the rotation matrix from angle-axis
   R12i_ = MatEigenConverter::MatToMatrix3d(R12i);
-  LOG(INFO) << "cv rotation: " << R12i_;
   **************************/
 
   // Step 5: Rotate set 2

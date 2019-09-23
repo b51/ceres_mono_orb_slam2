@@ -322,8 +322,8 @@ int Optimizer::PoseOptimization(Frame* pFrame) {
   g2o::SE3Quat SE3quat_recov = vSE3_recov->estimate();
   cv::Mat pose = Converter::toCvMat(SE3quat_recov);
   pFrame->SetPose(pose);
-  LOG(INFO) << "n bad " << nBad;
-  LOG(INFO) << "good responses " << nInitialCorrespondences - nBad;
+  VLOG(3) << "n bad " << nBad;
+  VLOG(3) << "good responses " << nInitialCorrespondences - nBad;
 
   return nInitialCorrespondences - nBad;
 }

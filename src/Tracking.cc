@@ -179,7 +179,6 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat& img,
         Frame(img_gray_, timestamp, orb_extractor_left_, orb_vocabulary_, K_,
               dist_coef_, bf_, theshold_depth_);
 
-  LOG(INFO) << "+++++++++ frame_num: " << frame_num++ << " ++++++++++";
   Track();
 
   return current_frame_.Tcw_.clone();
@@ -577,7 +576,7 @@ bool Tracking::TrackReferenceKeyFrame() {
   int nmatches = matcher.SearchByBoW(reference_keyframe_, current_frame_,
                                      matched_map_points);
 
-  LOG(ERROR) << "TrackReferenceKeyFrame nmatches: " << nmatches;
+  LOG(INFO) << "TrackReferenceKeyFrame nmatches: " << nmatches;
   if (nmatches < 15) {
     return false;
   }

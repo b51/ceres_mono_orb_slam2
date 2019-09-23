@@ -62,10 +62,10 @@ class PoseGraph3dErrorTerm {
   template <typename T>
   bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
                   const T* const p_b_ptr, T* residuals_ptr) const {
-    Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_keyframe(p_a_ptr);
-    Eigen::Map<const Eigen::Quaternion<T> > q_keyframe(q_a_ptr);
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_keyframe(p_a_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> q_keyframe(q_a_ptr);
 
-    Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_point(p_b_ptr);
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_point(p_b_ptr);
 
     // Compute the map point pose in camera frame.
     Eigen::Matrix<T, 3, 1> p_cp = q_keyframe * p_point + p_keyframe;
@@ -75,7 +75,7 @@ class PoseGraph3dErrorTerm {
 
     // Compute the residuals.
     // [ undistorted - projected ]
-    Eigen::Map<Eigen::Matrix<T, 2, 1> > residuals(residuals_ptr);
+    Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(residuals_ptr);
     residuals[0] =
         observation_.template cast<T>()[0] - projected[0] / projected[2];
     residuals[1] =
@@ -121,8 +121,8 @@ class PoseErrorTerm {
   template <typename T>
   bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
                   T* residuals_ptr) const {
-    Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_frame(p_a_ptr);
-    Eigen::Map<const Eigen::Quaternion<T> > q_frame(q_a_ptr);
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_frame(p_a_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> q_frame(q_a_ptr);
     // Compute the map point pose in camera frame.
     Eigen::Matrix<T, 3, 1> p_cp =
         q_frame * point_pose_.template cast<T>() + p_frame;
@@ -131,7 +131,7 @@ class PoseErrorTerm {
 
     // Compute the residuals.
     // [ undistorted - projected ]
-    Eigen::Map<Eigen::Matrix<T, 2, 1> > residuals(residuals_ptr);
+    Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(residuals_ptr);
     residuals[0] =
         observation_.template cast<T>()[0] - projected[0] / projected[2];
     residuals[1] =
@@ -162,6 +162,80 @@ class PoseErrorTerm {
   const Eigen::Vector3d point_pose_;
   // The square root of the measurement information matrix.
   const Eigen::Matrix2d sqrt_information_;
+};
+
+class Sim3ErrorTerm {
+ public:
+  Sim3ErrorTerm(const Eigen::Matrix3d& K, const Eigen::Vector2d& observation,
+                const Eigen::Vector3d& point_pose,
+                const Eigen::Matrix2d& sqrt_information, bool do_inverse)
+      : K_(K),
+        observation_(observation),
+        point_pose_(point_pose),
+        sqrt_information_(sqrt_information),
+        do_inverse_(do_inverse) {}
+
+  template <typename T>
+  bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
+                  const T* const scale_ptr, T* residuals_ptr) const {
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_frame(p_a_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> q_frame(q_a_ptr);
+    // Compute the map point pose in camera frame.
+    Eigen::Matrix<T, 3, 1> projected;
+    Eigen::Matrix<T, 3, 1> p_cp;
+    if (!do_inverse_) {
+      Eigen::Matrix<T, 3, 3> scaled_R_frame =
+          scale_ptr[0] * q_frame.normalized().toRotationMatrix();
+      Eigen::Quaternion<T> scaled_q_frame(scaled_R_frame);
+      p_cp = scaled_q_frame * point_pose_.template cast<T>() + p_frame;
+    } else {
+      Eigen::Matrix<T, 3, 3> scaled_inverse_R_frame =
+          (T(1) / scale_ptr[0]) * q_frame.conjugate().toRotationMatrix();
+      Eigen::Quaternion<T> scaled_inverse_q_frame(scaled_inverse_R_frame);
+      Eigen::Matrix<T, 3, 1> inverse_p_frame =
+          -(scaled_inverse_q_frame * p_frame);
+      p_cp = scaled_inverse_q_frame * point_pose_.template cast<T>() +
+             inverse_p_frame;
+    }
+    // Compute the map point pose in pixel frame.
+    projected = K_ * p_cp;
+
+    // Compute the residuals.
+    // [ undistorted - projected ]
+    Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(residuals_ptr);
+    residuals[0] =
+        observation_.template cast<T>()[0] - projected[0] / projected[2];
+    residuals[1] =
+        observation_.template cast<T>()[1] - projected[1] / projected[2];
+    // Scale the residuals by the measurement uncertainty.
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
+    return true;
+  }
+
+  static ceres::CostFunction* Create(const Eigen::Matrix3d& K,
+                                     const Eigen::Vector2d& observation,
+                                     const Eigen::Vector3d& point_pose,
+                                     const Eigen::Matrix2d& sqrt_information,
+                                     const bool do_inverse) {
+    return new ceres::AutoDiffCostFunction<Sim3ErrorTerm,
+                                           /* residual numbers */ 2,
+                                           /* first optimize numbers */ 3,
+                                           /* second optimize numbers */ 4,
+                                           /* third optimize numbers */ 1>(
+        new Sim3ErrorTerm(K, observation, point_pose, sqrt_information,
+                          do_inverse));
+  }
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+ private:
+  // The camera intrinsics.
+  const Eigen::Matrix3d K_;
+  const Eigen::Vector2d observation_;
+  const Eigen::Vector3d point_pose_;
+  // The square root of the measurement information matrix.
+  const Eigen::Matrix2d sqrt_information_;
+  const bool do_inverse_;
 };
 
 // StopFlagCallback reference to
@@ -210,6 +284,18 @@ class CeresOptimizer {
                            Eigen::Quaterniond& qcw);
 
   int static PoseOptimization(Frame* frame);
+
+  int static OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
+                          std::vector<MapPoint*>& matches, double* scale12,
+                          Eigen::Matrix3d& R12, Eigen::Vector3d& t12,
+                          const float th2, const bool bFixScale);
+
+  void static OptimizeEssentialGraph(
+      Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
+      const LoopClosing::KeyFrameAndSim3& keyframes_non_corrected_sim3,
+      const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
+      const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
+      const bool& is_fixed_scale);
 };
 
 }  // namespace ORB_SLAM2

@@ -30,6 +30,7 @@
 #include "LoopClosing.h"
 #include "CeresOptimizer.h"
 #include "Converter.h"
+#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 #include "Optimizer.h"
 #include "Sim3Solver.h"
@@ -296,7 +297,7 @@ bool LoopClosing::ComputeSim3() {
 
       Sim3Solver* pSolver = sim3_solvers[i];
       cv::Mat Scm = pSolver->iterate(5, is_no_more, is_inliers, n_inliers);
-      LOG(INFO) << "Scm: " << Scm;
+      LOG(INFO) << "Scm: \n" << Scm;
 
       // If Ransac reachs max. iterations discard keyframe
       if (is_no_more) {
@@ -316,14 +317,30 @@ bool LoopClosing::ComputeSim3() {
 
         cv::Mat R = pSolver->GetEstimatedRotation();
         cv::Mat t = pSolver->GetEstimatedTranslation();
-        const float s = pSolver->GetEstimatedScale();
+        double s = pSolver->GetEstimatedScale();
+        LOG(INFO) << " sim3 before optimized s: " << s;
+        LOG(INFO) << " sim3 before optimized R: \n" << R;
+        LOG(INFO) << " sim3 before optimized t: \n" << t.t();
+
         matcher.SearchBySim3(current_keyframe_, keyframe, map_point_matches, s,
                              R, t, 7.5);
 
-        g2o::Sim3 gScm(Converter::toMatrix3d(R), Converter::toVector3d(t), s);
-        const int n_inliers =
-            Optimizer::OptimizeSim3(current_keyframe_, keyframe,
-                                    map_point_matches, gScm, 10, is_fix_scale_);
+        // g2o::Sim3 gScm(Converter::toMatrix3d(R), Converter::toVector3d(t),
+        // s); const int n_inliers =
+        //    Optimizer::OptimizeSim3(current_keyframe_, keyframe,
+        //                            map_point_matches, gScm, 10,
+        //                            is_fix_scale_);
+
+        Eigen::Matrix3d _R = MatEigenConverter::MatToMatrix3d(R);
+        Eigen::Vector3d _t = MatEigenConverter::MatToVector3d(t);
+        const int n_inliers = CeresOptimizer::OptimizeSim3(
+            current_keyframe_, keyframe, map_point_matches, &s, _R, _t, 10,
+            is_fix_scale_);
+        LOG(INFO) << " sim3 optimized s: " << s;
+        LOG(INFO) << " sim3 optimized R: \n" << _R;
+        LOG(INFO) << " sim3 optimized t: \n" << _t.transpose();
+
+        g2o::Sim3 gScm(_R, _t, s);
 
         // If optimization is succesful stop ransacs and continue
         if (n_inliers >= 20) {
@@ -401,7 +418,7 @@ bool LoopClosing::ComputeSim3() {
 }
 
 void LoopClosing::CorrectLoop() {
-  LOG(INFO) << "Loop detected!" << std::endl;
+  LOG(WARNING) << "Loop detected!" << std::endl;
 
   // Send a stop signal to Local Mapping
   // Avoid new keyframes are inserted while correcting the loop

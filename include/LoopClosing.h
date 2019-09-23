@@ -57,6 +57,11 @@ class LoopClosing {
       Eigen::aligned_allocator<std::pair<const KeyFrame*, g2o::Sim3> > >
       KeyFrameAndPose;
 
+  typedef std::map<
+      KeyFrame*, Sim3, std::less<KeyFrame*>,
+      Eigen::aligned_allocator<std::pair<const KeyFrame*, Sim3> > >
+      KeyFrameAndSim3;
+
  public:
   LoopClosing(Map* map, KeyFrameDatabase* keyframe_database,
               ORBVocabulary* orb_vocabulary, const bool is_fix_scale);

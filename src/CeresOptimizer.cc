@@ -426,20 +426,22 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
               ided_local_keyframes[keyframe].block<4, 1>(3, 0).data());
         }
       } else {
-        // add residual block
-        problem.AddResidualBlock(
-            cost_function, loss_function,
-            ided_fixed_keyframes[keyframe].block<3, 1>(0, 0).data(),
-            ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data(),
-            it->second.data());
-        // set q to quaternion parameterization
-        problem.SetParameterization(
-            ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data(),
-            quaternion_local_parameterization);
-        problem.SetParameterBlockConstant(
-            ided_fixed_keyframes[keyframe].block<3, 1>(0, 0).data());
-        problem.SetParameterBlockConstant(
-            ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data());
+        if (ided_fixed_keyframes.find(keyframe) != ided_fixed_keyframes.end()) {
+          // add residual block
+          problem.AddResidualBlock(
+              cost_function, loss_function,
+              ided_fixed_keyframes[keyframe].block<3, 1>(0, 0).data(),
+              ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data(),
+              it->second.data());
+          // set q to quaternion parameterization
+          problem.SetParameterization(
+              ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data(),
+              quaternion_local_parameterization);
+          problem.SetParameterBlockConstant(
+              ided_fixed_keyframes[keyframe].block<3, 1>(0, 0).data());
+          problem.SetParameterBlockConstant(
+              ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data());
+        }
       }
     }  // end of for loop observations
   }    // end of for loop ided_local_map_points
@@ -522,6 +524,158 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
     map_point->SetWorldPos(MatEigenConverter::Vector3dToMat(it->second));
     map_point->UpdateNormalAndDepth();
   }
+}
+
+int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
+                                 std::vector<MapPoint*>& matches12,
+                                 double* scale12, Eigen::Matrix3d& R12,
+                                 Eigen::Vector3d& t12, const float th2,
+                                 const bool bFixScale) {
+  double _scale12 = *scale12;
+  Eigen::Quaterniond _q12(R12);
+  Eigen::Vector3d _t12 = t12;
+
+  Eigen::Matrix3d K1 = MatEigenConverter::MatToMatrix3d(keyframe_1->K_);
+  Eigen::Matrix3d K2 = MatEigenConverter::MatToMatrix3d(keyframe_2->K_);
+
+  // Camera poses
+  Eigen::Matrix3d R1cw =
+      MatEigenConverter::MatToMatrix3d(keyframe_1->GetRotation());
+  Eigen::Vector3d t1cw =
+      MatEigenConverter::MatToVector3d(keyframe_1->GetTranslation());
+
+  Eigen::Matrix3d R2cw =
+      MatEigenConverter::MatToMatrix3d(keyframe_2->GetRotation());
+  Eigen::Vector3d t2cw =
+      MatEigenConverter::MatToVector3d(keyframe_2->GetTranslation());
+
+  const int N = matches12.size();
+  const std::vector<MapPoint*> map_points_1 = keyframe_1->GetMapPointMatches();
+
+  int n_correspondences = 0;
+
+  const double deltaHuber = sqrt(th2);
+  ceres::Problem problem;
+  ceres::LossFunction* loss_function = new ceres::HuberLoss(deltaHuber);
+  ceres::LocalParameterization* quaternion_local_parameterization =
+      new ceres::EigenQuaternionParameterization;
+  ceres::Solver::Options options;
+  options.max_num_iterations = 100;
+  options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+  ceres::Solver::Summary summary;
+
+  // for CheckOutliers
+  std::list<Eigen::Vector2d> obs1_list;
+  std::list<Eigen::Vector3d> P3D2c_list;
+  std::list<Eigen::Vector2d> obs2_list;
+  std::list<Eigen::Vector3d> P3D1c_list;
+  for (int i = 0; i < N; i++) {
+    if (!matches12[i]) continue;
+
+    MapPoint* map_point_1 = map_points_1[i];
+    MapPoint* map_point_2 = matches12[i];
+
+    const int i2 = map_point_2->GetIndexInKeyFrame(keyframe_2);
+
+    if (map_point_1 && map_point_2) {
+      if (!map_point_1->isBad() && !map_point_2->isBad() && i2 >= 0) {
+        n_correspondences++;
+
+        // Get observations in keyframe_1's pixel coordinate
+        const cv::KeyPoint& keypoint_1 = keyframe_1->undistort_keypoints_[i];
+        Eigen::Vector2d obs1(keypoint_1.pt.x, keypoint_1.pt.y);
+        Eigen::Matrix2d invSigmaSquareInfo1 =
+            keyframe_1->inv_level_sigma2s_[keypoint_1.octave] *
+            Eigen::Matrix2d::Identity();
+        // Project map point in keyframe_2 to keyframe_1
+        Eigen::Vector3d P3D2w =
+            MatEigenConverter::MatToVector3d(map_point_2->GetWorldPos());
+        Eigen::Vector3d P3D2c = R2cw * P3D2w + t2cw;
+        // Create residual function, residual = obs1 - K1 * (sT12 * P3D2c),
+        // sT12 -> do_inverse = false;
+        ceres::CostFunction* obs1_cost_function =
+            Sim3ErrorTerm::Create(K1, obs1, P3D2c, invSigmaSquareInfo1, false);
+        problem.AddResidualBlock(obs1_cost_function, loss_function, _t12.data(),
+                                 _q12.coeffs().data(), &_scale12);
+        problem.SetParameterization(_q12.coeffs().data(),
+                                    quaternion_local_parameterization);
+
+        // Get observations in keyframe_2's pixel coordinate
+        const cv::KeyPoint& keypoint_2 = keyframe_2->undistort_keypoints_[i2];
+        Eigen::Vector2d obs2(keypoint_2.pt.x, keypoint_2.pt.y);
+        Eigen::Matrix2d invSigmaSquareInfo2 =
+            keyframe_2->inv_level_sigma2s_[keypoint_2.octave] *
+            Eigen::Matrix2d::Identity();
+        // Project map point in keyframe_1 to keyframe_2
+        Eigen::Vector3d P3D1w =
+            MatEigenConverter::MatToVector3d(map_point_1->GetWorldPos());
+        Eigen::Vector3d P3D1c = R1cw * P3D1w + t1cw;
+        // Residual function, residual = obs2 - K2 * (sT12.inverse() * P3D1c)
+        // sT21 = sT12.inverse() -> do_inverse = true;
+        ceres::CostFunction* obs2_cost_function =
+            Sim3ErrorTerm::Create(K2, obs2, P3D1c, invSigmaSquareInfo2, true);
+        problem.AddResidualBlock(obs2_cost_function, loss_function, _t12.data(),
+                                 _q12.coeffs().data(), &_scale12);
+        problem.SetParameterization(_q12.coeffs().data(),
+                                    quaternion_local_parameterization);
+        // push for outliers count
+        obs1_list.emplace_back(obs1);
+        P3D2c_list.emplace_back(P3D2c);
+        obs2_list.emplace_back(obs2);
+        P3D1c_list.emplace_back(P3D1c);
+      }
+    }
+  }  // end of for N loop
+  ceres::Solve(options, &problem, &summary);
+
+  int n_bad = 0;
+
+  while (!obs1_list.empty()) {
+    Eigen::Matrix3d sR12_for_check =
+        _scale12 * _q12.normalized().toRotationMatrix();
+    Eigen::Vector3d t12_for_check = _t12;
+    Eigen::Quaterniond q12_for_check(sR12_for_check);
+
+    bool is_outlier_12 =
+        CheckOutliers(K1, obs1_list.front(), P3D2c_list.front(), t12_for_check,
+                      q12_for_check, deltaHuber * deltaHuber);
+
+    Eigen::Matrix3d sR21_for_check =
+        (1.0 / _scale12) * _q12.conjugate().toRotationMatrix();
+    Eigen::Vector3d t21_for_check = -(sR21_for_check * t12_for_check);
+    Eigen::Quaterniond q21_for_check(sR21_for_check);
+
+    bool is_outlier_21 =
+        CheckOutliers(K2, obs2_list.front(), P3D1c_list.front(), t21_for_check,
+                      q21_for_check, deltaHuber * deltaHuber);
+
+    obs1_list.pop_front();
+    P3D2c_list.pop_front();
+    obs2_list.pop_front();
+    P3D1c_list.pop_front();
+
+    if (is_outlier_12 or is_outlier_21) n_bad++;
+  }
+
+  LOG(INFO) << "n_correspondences: " << n_correspondences
+            << " n_bad: " << n_bad;
+
+  if (n_correspondences - n_bad < 10) return 0;
+
+  R12 = _q12.normalized().toRotationMatrix();
+  t12 = _t12;
+  *scale12 = _scale12;
+
+  return n_correspondences - n_bad;
+}
+
+void CeresOptimizer::OptimizeEssentialGraph(
+    Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
+    const LoopClosing::KeyFrameAndSim3& keyframes_non_corrected_sim3,
+    const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
+    const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
+    const bool& is_fixed_scale) {
+  ceres::Problem problem;
 }
 
 }  // namespace ORB_SLAM2

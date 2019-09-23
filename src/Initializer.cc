@@ -681,13 +681,6 @@ bool Initializer::ReconstructH(vector<bool>& vbMatchesInliers,
     }
   }
 
-  /*
-  LOG(INFO) << "secondBestGood: " << secondBestGood << " bestGood: " << bestGood
-            << " bestParallax: " << bestParallax << " minParallax: " <<
-  minParallax
-            << " minTriangulated: " << minTriangulated << " N: " << N;
-  */
-
   if (secondBestGood < 0.75 * bestGood && bestParallax >= minParallax &&
       bestGood > minTriangulated && bestGood > 0.9 * N) {
     R21 = vR[bestSolutionIdx];
