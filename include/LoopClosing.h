@@ -38,6 +38,7 @@
 #include "Tracking.h"
 
 #include "KeyFrameDatabase.h"
+#include "CeresSim3.h"
 
 #include <mutex>
 #include <thread>

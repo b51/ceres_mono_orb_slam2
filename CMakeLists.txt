@@ -64,6 +64,7 @@ add_library(${PROJECT_NAME} SHARED
   src/Initializer.cc
   src/Viewer.cc
   src/MatEigenConverter.cc
+  src/CeresSim3.cc
 )
 
 target_link_libraries(${PROJECT_NAME}

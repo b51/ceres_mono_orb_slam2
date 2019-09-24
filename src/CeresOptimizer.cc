@@ -675,7 +675,253 @@ void CeresOptimizer::OptimizeEssentialGraph(
     const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
     const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
     const bool& is_fixed_scale) {
+  int min_weight = 100;
+
+  const std::vector<KeyFrame*> all_keyframes = map->GetAllKeyFrames();
+  const std::vector<MapPoint*> all_map_points = map->GetAllMapPoints();
+
+  const unsigned int max_keyframe_id = map->GetMaxKFid();
+
+  std::vector<Sim3, Eigen::aligned_allocator<Sim3>> Scws(max_keyframe_id + 1);
+  std::vector<Sim3, Eigen::aligned_allocator<Sim3>> corrected_Swcs(
+      max_keyframe_id + 1);
+
+  // Set all keyframe
+  for (size_t i = 0; i < all_keyframes.size(); i++) {
+    KeyFrame* keyframe = all_keyframes[i];
+    if (keyframe->isBad()) continue;
+
+    const int id_i = keyframe->id_;
+
+    auto it = keyframes_corrected_sim3.find(keyframe);
+    if (it != keyframes_corrected_sim3.end()) {
+      Scws[id_i] = it->second;
+    } else {
+      Eigen::Matrix3d Rcw =
+          MatEigenConverter::MatToMatrix3d(keyframe->GetRotation());
+      Eigen::Vector3d tcw =
+          MatEigenConverter::MatToVector3d(keyframe->GetTranslation());
+      Sim3 Siw(1.0, Rcw, tcw);
+      Scws[id_i] = Siw;
+    }
+  }  // end of all_keyframes loop
+
+  std::set<std::pair<long unsigned int, long unsigned int> > inserted_edges;
+
   ceres::Problem problem;
+  ceres::LocalParameterization* quaternion_local_parameterization =
+      new ceres::EigenQuaternionParameterization;
+  ceres::Solver::Options options;
+  options.max_num_iterations = 100;
+  options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+  ceres::Solver::Summary summary;
+
+  // Set Loop connections
+  for (auto it = loop_connections.begin(); it != loop_connections.end(); it++) {
+    KeyFrame* keyframe = it->first;
+    const long unsigned int id_i = keyframe->id_;
+    const std::set<KeyFrame*>& connected_keyframes = it->second;
+    const Sim3 Siw = Scws[id_i];
+    const Sim3 Swi = Siw.inverse();
+
+    for (auto it_connections = connected_keyframes.begin();
+         it_connections != connected_keyframes.end(); it_connections++) {
+      const long unsigned int id_j = (*it_connections)->id_;
+      if ((id_i != current_keyframe->id_ || id_j != loop_keyframe->id_) &&
+          keyframe->GetWeight(*it_connections) < min_weight)
+        continue;
+
+      const Sim3 Sjw = Scws[id_j];
+      const Sim3 Sji = Sjw * Swi;
+
+      ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji);
+      problem.AddResidualBlock(cost_function, nullptr,
+                               Scws[id_j].translation().data(),
+                               Scws[id_j].rotation().coeffs().data(),
+                               &(Scws[id_j].scale()),
+                               Scws[id_i].translation().data(),
+                               Scws[id_i].rotation().coeffs().data(),
+                               &Scws[id_i].scale());
+
+      problem.SetParameterization(Scws[id_j].rotation().coeffs().data(),
+                                  quaternion_local_parameterization);
+      problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
+                                  quaternion_local_parameterization);
+      if (id_j == loop_keyframe->id_) {
+        problem.SetParameterBlockConstant(
+            Scws[id_j].rotation().coeffs().data());
+        problem.SetParameterBlockConstant(Scws[id_j].translation().data());
+        problem.SetParameterBlockConstant(&Scws[id_j].scale());
+      }
+
+      inserted_edges.insert(make_pair(min(id_i, id_j), max(id_i, id_j)));
+    }
+  }  // end of loop connections
+
+  // Set normal keyframes
+  for (size_t i = 0; i < all_keyframes.size(); i++) {
+    KeyFrame* keyframe = all_keyframes[i];
+
+    const int id_i = keyframe->id_;
+    Sim3 Swi;
+
+    auto it_i = keyframes_non_corrected_sim3.find(keyframe);
+    if (it_i != keyframes_non_corrected_sim3.end()) {
+      Swi = (it_i->second).inverse();
+    } else {
+      Swi = Scws[id_i].inverse();
+    }
+    KeyFrame* parent_keyframe = keyframe->GetParent();
+    if (parent_keyframe) {
+      int id_j = parent_keyframe->id_;
+
+      Sim3 Sjw;
+
+      // TODO(b51): Add Sjw = it_j->second situaion
+      auto it_j = keyframes_non_corrected_sim3.find(parent_keyframe);
+      if (it_j != keyframes_non_corrected_sim3.end()) {
+        Sjw = it_j->second;
+      } else {
+        Sjw = Scws[id_j];
+      }
+      Sim3 Sji = Sjw * Swi;
+
+      ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji);
+      problem.AddResidualBlock(cost_function, nullptr,
+                               Scws[id_j].translation().data(),
+                               Scws[id_j].rotation().coeffs().data(),
+                               &(Scws[id_j].scale()),
+                               Scws[id_i].translation().data(),
+                               Scws[id_i].rotation().coeffs().data(),
+                               &Scws[id_i].scale());
+
+      problem.SetParameterization(Scws[id_j].rotation().coeffs().data(),
+                                  quaternion_local_parameterization);
+      problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
+                                  quaternion_local_parameterization);
+      if (id_j == loop_keyframe->id_) {
+        problem.SetParameterBlockConstant(
+            Scws[id_j].rotation().coeffs().data());
+        problem.SetParameterBlockConstant(Scws[id_j].translation().data());
+        problem.SetParameterBlockConstant(&Scws[id_j].scale());
+      }
+    }
+
+    // Set for loop edges
+    const std::set<KeyFrame*> loop_edges = keyframe->GetLoopEdges();
+    for (auto it = loop_edges.begin(); it != loop_edges.end(); it++) {
+      KeyFrame* loop_keyframe = *it;
+      if (loop_keyframe->id_ < keyframe->id_) {
+        Sim3 Slw;
+        auto it_l = keyframes_non_corrected_sim3.find(loop_keyframe);
+        if (it_l != keyframes_non_corrected_sim3.end()) {
+          Slw = it_l->second;
+        } else {
+          Slw = Scws[loop_keyframe->id_];
+        }
+        Sim3 Sli = Slw * Swi;
+
+        ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sli);
+        problem.AddResidualBlock(cost_function, nullptr,
+                                 Scws[loop_keyframe->id_].translation().data(),
+                                 Scws[loop_keyframe->id_].rotation().coeffs().data(),
+                                 &(Scws[loop_keyframe->id_y].scale()),
+                                 Scws[id_i].translation().data(),
+                                 Scws[id_i].rotation().coeffs().data(),
+                                 &Scws[id_i].scale());
+
+        problem.SetParameterization(Scws[loop_keyframe->id_].rotation().coeffs().data(),
+                                    quaternion_local_parameterization);
+        problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
+                                    quaternion_local_parameterization);
+      }
+    }
+
+    // Covisibility keyframes
+    const std::vector<KeyFrame*> connected_keyframes =
+        keyframe->GetCovisiblesByWeight(min_weight);
+    for (auto it = connected_keyframes.begin(); it != connected_keyframes.end();
+         it++) {
+      KeyFrame* keyframe_n = *it;
+      if (keyframe_n && keyframe_n != parent_keyframe &&
+          !keyframe->hasChild(keyframe_n) && !loop_edges.count(keyframe_n)) {
+        if (!keyframe_n->isBad() && keyframe_n->id_ < keyframe->id_) {
+          if (inserted_edges.count(
+                  std::make_pair(min(keyframe->id_, keyframe_n->id_),
+                                 max(keyframe->id_, keyframe_n->id_))))
+            continue;
+        }
+
+        Sim3 Snw;
+        auto it_n = keyframes_non_corrected_sim3.find(keyframe_n);
+        if (it_n != keyframes_non_corrected_sim3.end())
+          Snw = it_n->second;
+        else
+          Snw = Scws[keyframe_n->id_];
+
+        Sim3 Sni = Snw * Swi;
+
+        ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sni);
+        problem.AddResidualBlock(cost_function, nullptr,
+                                 Scws[keyframe_n->id_].translation().data(),
+                                 Scws[keyframe_n->id_].rotation().coeffs().data(),
+                                 &(Scws[keyframe_n->id_y].scale()),
+                                 Scws[id_i].translation().data(),
+                                 Scws[id_i].rotation().coeffs().data(),
+                                 &Scws[id_i].scale());
+
+        problem.SetParameterization(Scws[keyframe_n->id_].rotation().coeffs().data(),
+                                    quaternion_local_parameterization);
+        problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
+                                    quaternion_local_parameterization);
+      }
+    }
+  }  // end of for loop all_keyframes
+  ceres::Solve(options, &problem, &summary);
+
+  unique_lock<mutex> lock(map->mutex_map_update_);
+
+  // SE3 Pose Recovering. Sim3:[sR t;0 1] -> SE3:[R t/s;0 1]
+  for (size_t i = 0; i < keyframes.size(); i++) {
+    KeyFrame* keyframe = keyframes[i];
+    const int id_i = keyframe->id_;
+    corrected_Swcs[id_i] = Scws[id_i].inverse();
+    Eigen::Matrix3d R = Scws[id_i].rotation().toRotationMatrix();
+    Eigen::Vector3d t = Scws[id_i].translation();
+    double s = Scws[id_i].scale();
+    t = (1./s) * t;
+    Eigen::Matrix4d Tiw = Eigen::Matrix4d::Identity();
+    Tiw.block<3, 3>(0, 0) = R;
+    Tiw.block<3, 1>(0, 3) = t;
+    keyframe->SetPose(MatEigenConverter::Matrix4dToMat(Tiw));
+  }
+  // Correct points. Transform to "non-optimized" reference keyframe pose and
+  // transform back with optimized pose
+  for (size_t i = 0; i < map_points.size(); i++) {
+    MapPoint* map_point = map_points[i];
+
+    if (map_point->isBad()) continue;
+
+    int id_r;
+    if (map_point->corrected_by_keyframe_ = current_keyframe->id_) {
+      id_r = map_point->corrected_reference_;
+    } else {
+      KeyFrame* referecen_keyframe = map_point->GetReferenceKeyFrame();
+      id_r = reference_keyframe->id_;
+    }
+    Sim3 Srw = Scws[id_r];
+    corrected_Swr = corrected_Swcs[id_r];
+    Eigen::Vector3d P3Dw =
+        MatEigenConverter::Matrix4dToMat(map_point->GetWorldPos());
+    Eigen::Vector3d P3Dc =
+        Srw.scale() * (Srw.rotation() * P3Dw) + Srw.translation();
+    Eigen::Vector3d corrected_P3Dw =
+        corrected_Swr.scale() * (corrected_Swr.rotation() * P3Dc) +
+        corrected_Swr.translation();
+
+    map_point->SetWorldPos(MatEigenConverter::Vector3dToMat(corrected_P3Dw));
+    map_point->UpdateNormalAndDepth();
+  }
 }
 
 }  // namespace ORB_SLAM2

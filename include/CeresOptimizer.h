@@ -238,6 +238,70 @@ class Sim3ErrorTerm {
   const bool do_inverse_;
 };
 
+// TODO(b51): get residual to Sim3 mode
+class EssentialGraphErrorTerm {
+ public:
+  EssentialGraphErrorTerm(const Sim3& Sij) : Sij_(Sij) {}
+
+  template <typename T>
+  bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
+                  const T* const scale_a_ptr, const T* const p_b_ptr,
+                  const T* const q_b_ptr, const T* const scale_b_ptr,
+                  T* residuals_ptr) const {
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_a_frame(p_a_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> q_a_frame(q_a_ptr);
+
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_b_frame(p_b_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> q_b_frame(q_b_ptr);
+
+    Eigen::Map<Eigen::Matrix<T, 8, 1>> residuals(residuals_ptr);
+
+    T s_b_frame = T(1.) / scale_b_ptr[0];
+    Eigen::Quaternion<T> q_frame_b = q_b_frame.conjugate();
+    Eigen::Matrix<T, 3, 1> p_frame_b = -(q_frame_b * (s_b_frame * p_b_frame));
+
+    T s_a_b = scale_a_ptr[0] * scale_b_ptr[0];
+    Eigen::Quaternion<T> q_a_b = (q_a_frame * q_frame_b).normalized();
+    Eigen::Matrix<T, 3, 1> p_a_b =
+        scale_a_ptr[0] * (q_a_frame * p_frame_b) + p_a_frame;
+
+    // scale residual
+    residuals[0] = T(Sij_.scale()) - s_a_b;
+
+    // quaternion residuals
+    residuals[1] =
+        Sij_.rotation().template cast<T>().coeffs()[0] - q_a_b.coeffs()[0];
+    residuals[2] =
+        Sij_.rotation().template cast<T>().coeffs()[1] - q_a_b.coeffs()[1];
+    residuals[3] =
+        Sij_.rotation().template cast<T>().coeffs()[2] - q_a_b.coeffs()[2];
+    residuals[4] =
+        Sij_.rotation().template cast<T>().coeffs()[3] - q_a_b.coeffs()[3];
+
+    // translation residuals
+    residuals[5] = Sij_.translation().template cast<T>()[0] - p_a_b[0];
+    residuals[6] = Sij_.translation().template cast<T>()[1] - p_a_b[1];
+    residuals[7] = Sij_.translation().template cast<T>()[2] - p_a_b[2];
+  }
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  static ceres::CostFunction* Create(const Sim3& Sij) {
+    return new ceres::AutoDiffCostFunction<EssentialGraphErrorTerm,
+                                           /* residual numbers */ 8,
+                                           /* first optimize numbers */ 3,
+                                           /* second optimize numbers */ 4,
+                                           /* third optimize numbers */ 1,
+                                           /* fourth optimize numbers */ 3,
+                                           /* fifth optimize numbers */ 4,
+                                           /* sixth optimize numbers */ 1>(
+        new EssentialGraphErrorTerm(Sij));
+  }
+
+ private:
+  const Sim3 Sij_;
+};
+
 // StopFlagCallback reference to
 // http://ceres-solver.org/nnls_solving.html#_CPPv2N5ceres17IterationCallbackE
 class StopFlagCallback : public ceres::IterationCallback {
