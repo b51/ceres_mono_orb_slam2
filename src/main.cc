@@ -98,6 +98,8 @@ int main(int argc, char* argv[]) {
     if (ttrack < T) {
       usleep((T - ttrack) * 1e6);
     }
+    if (i == n_images-1)
+      cv::waitKey(0);
   }
 
   slam.Shutdown();

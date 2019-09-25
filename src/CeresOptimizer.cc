@@ -669,6 +669,7 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
   return n_correspondences - n_bad;
 }
 
+// TODO(b51): This function need to review again
 void CeresOptimizer::OptimizeEssentialGraph(
     Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
     const LoopClosing::KeyFrameAndSim3& keyframes_non_corrected_sim3,
@@ -825,7 +826,7 @@ void CeresOptimizer::OptimizeEssentialGraph(
         problem.AddResidualBlock(cost_function, nullptr,
                                  Scws[loop_keyframe->id_].translation().data(),
                                  Scws[loop_keyframe->id_].rotation().coeffs().data(),
-                                 &(Scws[loop_keyframe->id_y].scale()),
+                                 &(Scws[loop_keyframe->id_].scale()),
                                  Scws[id_i].translation().data(),
                                  Scws[id_i].rotation().coeffs().data(),
                                  &Scws[id_i].scale());
@@ -865,7 +866,7 @@ void CeresOptimizer::OptimizeEssentialGraph(
         problem.AddResidualBlock(cost_function, nullptr,
                                  Scws[keyframe_n->id_].translation().data(),
                                  Scws[keyframe_n->id_].rotation().coeffs().data(),
-                                 &(Scws[keyframe_n->id_y].scale()),
+                                 &(Scws[keyframe_n->id_].scale()),
                                  Scws[id_i].translation().data(),
                                  Scws[id_i].rotation().coeffs().data(),
                                  &Scws[id_i].scale());
@@ -882,8 +883,8 @@ void CeresOptimizer::OptimizeEssentialGraph(
   unique_lock<mutex> lock(map->mutex_map_update_);
 
   // SE3 Pose Recovering. Sim3:[sR t;0 1] -> SE3:[R t/s;0 1]
-  for (size_t i = 0; i < keyframes.size(); i++) {
-    KeyFrame* keyframe = keyframes[i];
+  for (size_t i = 0; i < all_keyframes.size(); i++) {
+    KeyFrame* keyframe = all_keyframes[i];
     const int id_i = keyframe->id_;
     corrected_Swcs[id_i] = Scws[id_i].inverse();
     Eigen::Matrix3d R = Scws[id_i].rotation().toRotationMatrix();
@@ -897,8 +898,8 @@ void CeresOptimizer::OptimizeEssentialGraph(
   }
   // Correct points. Transform to "non-optimized" reference keyframe pose and
   // transform back with optimized pose
-  for (size_t i = 0; i < map_points.size(); i++) {
-    MapPoint* map_point = map_points[i];
+  for (size_t i = 0; i < all_map_points.size(); i++) {
+    MapPoint* map_point = all_map_points[i];
 
     if (map_point->isBad()) continue;
 
@@ -906,13 +907,13 @@ void CeresOptimizer::OptimizeEssentialGraph(
     if (map_point->corrected_by_keyframe_ = current_keyframe->id_) {
       id_r = map_point->corrected_reference_;
     } else {
-      KeyFrame* referecen_keyframe = map_point->GetReferenceKeyFrame();
+      KeyFrame* reference_keyframe = map_point->GetReferenceKeyFrame();
       id_r = reference_keyframe->id_;
     }
     Sim3 Srw = Scws[id_r];
-    corrected_Swr = corrected_Swcs[id_r];
+    Sim3 corrected_Swr = corrected_Swcs[id_r];
     Eigen::Vector3d P3Dw =
-        MatEigenConverter::Matrix4dToMat(map_point->GetWorldPos());
+        MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
     Eigen::Vector3d P3Dc =
         Srw.scale() * (Srw.rotation() * P3Dw) + Srw.translation();
     Eigen::Vector3d corrected_P3Dw =

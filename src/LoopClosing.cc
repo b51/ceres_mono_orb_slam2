@@ -451,8 +451,11 @@ void LoopClosing::CorrectLoop() {
       current_keyframe_->GetVectorCovisibleKeyFrames();
   current_connected_keyframes_.push_back(current_keyframe_);
 
-  KeyFrameAndPose corrected_sim3, non_corrected_sim3;
-  corrected_sim3[current_keyframe_] = g2oScw_;
+  KeyFrameAndSim3 corrected_sim3, non_corrected_sim3;
+  Sim3 sim3_Scw(g2oScw_.scale(), g2oScw_.rotation(), g2oScw_.translation());
+  corrected_sim3[current_keyframe_] = sim3_Scw;
+  // KeyFrameAndPose corrected_sim3, non_corrected_sim3;
+  // corrected_sim3[current_keyframe_] = g2oScw_;
   cv::Mat Twc = current_keyframe_->GetPoseInverse();
 
   {
@@ -474,7 +477,10 @@ void LoopClosing::CorrectLoop() {
                          1.0);
         g2o::Sim3 g2oCorrectedSiw = g2oSic * g2oScw_;
         // Pose corrected with the Sim3 of the loop closure
-        corrected_sim3[pKFi] = g2oCorrectedSiw;
+        //corrected_sim3[pKFi] = g2oCorrectedSiw;
+        Sim3 Siw(g2oCorrectedSiw.scale(), g2oCorrectedSiw.rotation(),
+                 g2oCorrectedSiw.translation());
+        corrected_sim3[pKFi] = Siw;
       }
 
       cv::Mat Riw = Tiw.rowRange(0, 3).colRange(0, 3);
@@ -482,19 +488,28 @@ void LoopClosing::CorrectLoop() {
       g2o::Sim3 g2oSiw(Converter::toMatrix3d(Riw), Converter::toVector3d(tiw),
                        1.0);
       // Pose without correction
-      non_corrected_sim3[pKFi] = g2oSiw;
+      // non_corrected_sim3[pKFi] = g2oSiw;
+      Sim3 Siw(g2oSiw.scale(), g2oSiw.rotation(), g2oSiw.translation());
+      non_corrected_sim3[pKFi] = Siw;
     }
 
     // Correct all MapPoints obsrved by current keyframe and neighbors, so that
     // they align with the other side of the loop
-    for (KeyFrameAndPose::iterator mit = corrected_sim3.begin(),
+    for (KeyFrameAndSim3::iterator mit = corrected_sim3.begin(),
                                    mend = corrected_sim3.end();
          mit != mend; mit++) {
       KeyFrame* pKFi = mit->first;
-      g2o::Sim3 g2oCorrectedSiw = mit->second;
+      // g2o::Sim3 g2oCorrectedSiw = mit->second;
+      // g2o::Sim3 g2oCorrectedSwi = g2oCorrectedSiw.inverse();
+      Sim3 corrected_Siw = mit->second;
+      g2o::Sim3 g2oCorrectedSiw(corrected_Siw.rotation(),
+                                corrected_Siw.translation(),
+                                corrected_Siw.scale());
       g2o::Sim3 g2oCorrectedSwi = g2oCorrectedSiw.inverse();
 
-      g2o::Sim3 g2oSiw = non_corrected_sim3[pKFi];
+      // g2o::Sim3 g2oSiw = non_corrected_sim3[pKFi];
+      Sim3 Siw = non_corrected_sim3[pKFi];
+      g2o::Sim3 g2oSiw(Siw.rotation(), Siw.translation(), Siw.scale());
 
       std::vector<MapPoint*> vpMPsi = pKFi->GetMapPointMatches();
       for (size_t iMP = 0, endMPi = vpMPsi.size(); iMP < endMPi; iMP++) {
@@ -589,9 +604,11 @@ void LoopClosing::CorrectLoop() {
   }
 
   // Optimize graph
-  Optimizer::OptimizeEssentialGraph(map_, matched_keyframe_, current_keyframe_,
-                                    non_corrected_sim3, corrected_sim3,
-                                    loop_connections, is_fix_scale_);
+  LOG(ERROR) << " Ceres OptimizeEssentialGraph start";
+  CeresOptimizer::OptimizeEssentialGraph(
+      map_, matched_keyframe_, current_keyframe_, non_corrected_sim3,
+      corrected_sim3, loop_connections, is_fix_scale_);
+  LOG(ERROR) << " Ceres OptimizeEssentialGraph end";
 
   map_->InformNewBigChange();
 
@@ -612,16 +629,22 @@ void LoopClosing::CorrectLoop() {
   last_loop_keyframe_id_ = current_keyframe_->id_;
 }
 
-void LoopClosing::SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap) {
+//void LoopClosing::SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap) {
+void LoopClosing::SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap) {
   ORBmatcher matcher(0.8);
 
-  for (KeyFrameAndPose::const_iterator mit = CorrectedPosesMap.begin(),
+  for (KeyFrameAndSim3::const_iterator mit = CorrectedPosesMap.begin(),
                                        mend = CorrectedPosesMap.end();
        mit != mend; mit++) {
     KeyFrame* keyframe = mit->first;
 
-    g2o::Sim3 g2oScw = mit->second;
-    cv::Mat cvScw = Converter::toCvMat(g2oScw);
+    // g2o::Sim3 g2oScw = mit->second;
+    // cv::Mat cvScw = Converter::toCvMat(g2oScw);
+    Sim3 Scw = mit->second;
+    Eigen::Matrix4d eig_Scw = Eigen::Matrix4d::Identity();
+    eig_Scw.block<3, 3>(0, 0) = Scw.scale() * Scw.rotation().toRotationMatrix();
+    eig_Scw.block<3, 1>(0, 3) = Scw.translation();
+    cv::Mat cvScw = MatEigenConverter::Matrix4dToMat(eig_Scw);
 
     vector<MapPoint*> replace_map_points(loop_map_points_.size(),
                                          static_cast<MapPoint*>(NULL));

@@ -7,7 +7,7 @@
   <maintainer email="b51live@gmail.com">
     b51
   </maintainer>
-  <license>None</license>
+  <license>GPLv3</license>
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>git</build_depend>

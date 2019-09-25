@@ -101,7 +101,8 @@ class LoopClosing {
 
   bool ComputeSim3();
 
-  void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap);
+  // void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap);
+  void SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap);
 
   void CorrectLoop();
 

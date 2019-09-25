@@ -18,9 +18,9 @@
 class Sim3 {
  public:
   Sim3()
-      : q_(Eigen::Quaterniond(1., 0., 0., 0.)),
-        t_(Eigen::Vector3d::Zero()),
-        s_(1.) {}
+      : s_(1.),
+        q_(Eigen::Quaterniond(1., 0., 0., 0.)),
+        t_(Eigen::Vector3d::Zero()) {}
 
   Sim3(double s, const Eigen::Quaterniond& q, const Eigen::Vector3d& t)
       : s_(s), q_(q), t_(t) {}
@@ -50,9 +50,9 @@ class Sim3 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  private:
+  double s_;
   Eigen::Quaterniond q_;
   Eigen::Vector3d t_;
-  double s_;
 };
 
 Sim3 operator*(const Sim3& lhs, const Sim3& rhs);
