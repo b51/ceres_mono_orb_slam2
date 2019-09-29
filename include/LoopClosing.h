@@ -136,7 +136,7 @@ class LoopClosing {
   std::vector<KeyFrame*> current_connected_keyframes_;
   std::vector<MapPoint*> current_matched_map_points_;
   std::vector<MapPoint*> loop_map_points_;
-  cv::Mat Scw_;
+  Eigen::Matrix4d Scw_;
   Sim3 sim3_Scw_;
 
   long unsigned int last_loop_keyframe_id_;

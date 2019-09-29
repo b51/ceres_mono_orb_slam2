@@ -55,7 +55,7 @@ class Tracking {
            const string& string_setting_file);
 
   // Preprocess the input and call Track(). Extract features and performs
-  cv::Mat GrabImageMonocular(const cv::Mat& img, const double& timestamp);
+  Eigen::Matrix4d GrabImageMonocular(const cv::Mat& img, const double& timestamp);
 
   void SetLocalMapper(LocalMapping* local_mapper);
   void SetLoopClosing(LoopClosing* loop_closing);
@@ -92,7 +92,7 @@ class Tracking {
   // Lists used to recover the full camera trajectory at the end of the
   // execution. Basically we store the reference keyframe for each frame and its
   // relative transformation
-  list<cv::Mat> relative_frame_poses_;
+  list<Eigen::Matrix4d> relative_frame_poses_;
   list<KeyFrame*> reference_keyframes_;
   list<double> frame_times_;
   list<bool> do_lostes_;
@@ -196,7 +196,7 @@ class Tracking {
   unsigned int last_reloc_frame_id_;
 
   // Motion Model
-  cv::Mat velocity_;
+  Eigen::Matrix4d velocity_;
 
   // Color order (true RGB, false BGR, ignored if grayscale)
   bool is_rgb_;

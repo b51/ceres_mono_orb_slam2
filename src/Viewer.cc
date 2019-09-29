@@ -45,6 +45,7 @@ Viewer::Viewer(MonoORBSlam* mono_orb_slam, FrameDrawer* frame_drawer,
       tracker_(tracker),
       is_finish_requested_(false),
       is_finished_(true),
+      is_follow_(false),
       is_stopped_(true),
       is_stop_requested_(false) {
   cv::FileStorage fSettings(string_setting_file, cv::FileStorage::READ);
@@ -81,7 +82,7 @@ void Viewer::Run() {
 
   pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
                                           pangolin::Attach::Pix(175));
-  pangolin::Var<bool> menuFollowCamera("menu.Follow Camera", true, true);
+  pangolin::Var<bool> menuFollowCamera("menu.Follow Camera", false, true);
   pangolin::Var<bool> menuShowPoints("menu.Show Points", true, true);
   pangolin::Var<bool> menuShowKeyFrames("menu.Show KeyFrames", true, true);
   pangolin::Var<bool> menuShowGraph("menu.Show Graph", true, true);
@@ -107,7 +108,6 @@ void Viewer::Run() {
 
   cv::namedWindow("ORB-SLAM2: Current Frame");
 
-  bool is_follow = true;
   bool is_localization_mode = false;
 
   while (true) {
@@ -115,16 +115,16 @@ void Viewer::Run() {
 
     map_drawer_->GetCurrentOpenGLCameraMatrix(Twc);
 
-    if (menuFollowCamera && is_follow) {
+    if (menuFollowCamera && is_follow_) {
       s_cam.Follow(Twc);
-    } else if (menuFollowCamera && !is_follow) {
+    } else if (menuFollowCamera && !is_follow_) {
       s_cam.SetModelViewMatrix(
           pangolin::ModelViewLookAt(view_point_x_, view_point_y_, view_point_z_,
                                     0, 0, 0, 0.0, -1.0, 0.0));
       s_cam.Follow(Twc);
-      is_follow = true;
-    } else if (!menuFollowCamera && is_follow) {
-      is_follow = false;
+      is_follow_ = true;
+    } else if (!menuFollowCamera && is_follow_) {
+      is_follow_ = false;
     }
 
     if (menuLocalizationMode && !is_localization_mode) {
@@ -157,7 +157,7 @@ void Viewer::Run() {
         mono_orb_slam_->DeactivateLocalizationMode();
       }
       is_localization_mode = false;
-      is_follow = true;
+      is_follow_ = true;
       menuFollowCamera = true;
       mono_orb_slam_->Reset();
       menuReset = false;
@@ -220,6 +220,11 @@ bool Viewer::Stop() {
   }
 
   return false;
+}
+
+void Viewer::SetFollowCamera() {
+  unique_lock<mutex> lock(mutex_stop_);
+  is_follow_ = true;
 }
 
 void Viewer::Release() {

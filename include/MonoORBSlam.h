@@ -42,7 +42,7 @@ class MonoORBSlam {
   MonoORBSlam(const string& voc_file, const string& string_setting_file,
               const bool is_use_viewer = true);
 
-  cv::Mat TrackMonocular(const cv::Mat& img, const double& timestamp);
+  Eigen::Matrix4d TrackMonocular(const cv::Mat& img, const double& timestamp);
 
   // This stops local mapping thread (map building) and performs only camera
   // tracking.

@@ -12,7 +12,7 @@
 #include "MatEigenConverter.h"
 
 Eigen::Matrix4d MatEigenConverter::MatToMatrix4d(const cv::Mat& T) {
-  Eigen::Matrix4d eigen_T = Eigen::Matrix4d::Zero();
+  Eigen::Matrix4d eigen_T = Eigen::Matrix4d::Identity();
   for (int i = 0; i < 4; i++)
     for (int j = 0; j < 4; j++) {
       eigen_T(i, j) = T.at<float>(i, j);
@@ -30,7 +30,7 @@ cv::Mat MatEigenConverter::Matrix4dToMat(const Eigen::Matrix4d& T) {
 }
 
 Eigen::Matrix3d MatEigenConverter::MatToMatrix3d(const cv::Mat& R) {
-  Eigen::Matrix3d eigen_R = Eigen::Matrix3d::Zero();
+  Eigen::Matrix3d eigen_R = Eigen::Matrix3d::Identity();
   for (int i = 0; i < 3; i++)
     for (int j = 0; j < 3; j++) {
       eigen_R(i, j) = R.at<float>(i, j);
@@ -63,41 +63,35 @@ cv::Mat MatEigenConverter::Vector3dToMat(const Eigen::Vector3d& t) {
   return cv_t.clone();
 }
 
-Eigen::Matrix<double, 7, 1> MatEigenConverter::MatToMatrix_7_1(
-    const cv::Mat& pose) {
+Eigen::Matrix<double, 7, 1> MatEigenConverter::Matrix4dToMatrix_7_1(
+    const Eigen::Matrix4d& pose) {
   Eigen::Matrix<double, 7, 1> Tcw_7_1;
   Eigen::Matrix3d R;
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
-      R(i, j) = pose.at<float>(i, j);
-    }
-    Tcw_7_1[i] = pose.at<float>(i, 3);
-  }
+  R = pose.block<3, 3>(0, 0);
   // Eigen Quaternion coeffs output [x, y, z, w]
+  Tcw_7_1.block<3, 1>(0, 0) = pose.block<3, 1>(0, 3);
   Tcw_7_1.block<4, 1>(3, 0) = Eigen::Quaterniond(R).coeffs();
   return Tcw_7_1;
 }
 
-cv::Mat MatEigenConverter::Matrix_7_1_ToMat(
+Eigen::Matrix4d MatEigenConverter::Matrix_7_1_ToMatrix4d(
     const Eigen::Matrix<double, 7, 1>& Tcw_7_1) {
   Eigen::Quaterniond q(Tcw_7_1[6], Tcw_7_1[3], Tcw_7_1[4], Tcw_7_1[5]);
   Eigen::Matrix3d R = q.normalized().toRotationMatrix();
-  Eigen::Matrix4d _pose = Eigen::Matrix4d::Identity();
-  _pose.block<3, 3>(0, 0) = R;
-  _pose.block<3, 1>(0, 3) = Tcw_7_1.block<3, 1>(0, 0);
-
-  cv::Mat pose = Matrix4dToMat(_pose);
-  return pose.clone();
+  Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
+  pose.block<3, 3>(0, 0) = R;
+  pose.block<3, 1>(0, 3) = Tcw_7_1.block<3, 1>(0, 0);
+  return pose;
 }
 
-cv::Mat MatEigenConverter::Sim3ToMat(const Sim3& sim) {
+Eigen::Matrix4d MatEigenConverter::Sim3ToMatrix4d(const Sim3& sim) {
   Eigen::Matrix3d R = sim.rotation().toRotationMatrix();
   Eigen::Vector3d t = sim.translation();
   double s = sim.scale();
   Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
   T.block<3, 3>(0, 0) = s * R;
   T.block<3, 1>(0, 3) = t;
-  return Matrix4dToMat(T);
+  return T;
 }
 
 std::vector<cv::Mat> MatEigenConverter::toDescriptorVector(

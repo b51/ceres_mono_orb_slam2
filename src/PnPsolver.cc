@@ -90,8 +90,8 @@ PnPsolver::PnPsolver(const Frame &F, const vector<MapPoint*> &vpMapPointMatches)
                 mvP2D.push_back(kp.pt);
                 mvSigma2.push_back(F.level_sigma2s_[kp.octave]);
 
-                cv::Mat Pos = pMP->GetWorldPos();
-                mvP3Dw.push_back(cv::Point3f(Pos.at<float>(0),Pos.at<float>(1), Pos.at<float>(2)));
+                Eigen::Vector3d Pos = pMP->GetWorldPos();
+                mvP3Dw.push_back(cv::Point3f(Pos[0], Pos[1], Pos[2]));
 
                 mvKeyPointIndices.push_back(i);
                 mvAllIndices.push_back(idx);
@@ -157,13 +157,13 @@ void PnPsolver::SetRansacParameters(double probability, int minInliers, int maxI
         mvMaxError[i] = mvSigma2[i]*th2;
 }
 
-cv::Mat PnPsolver::find(vector<bool> &vbInliers, int &nInliers)
+Eigen::Matrix4d PnPsolver::find(vector<bool> &vbInliers, int &nInliers)
 {
     bool bFlag;
     return iterate(mRansacMaxIts,bFlag,vbInliers,nInliers);
 }
 
-cv::Mat PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers)
+Eigen::Matrix4d PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers)
 {
     bNoMore = false;
     vbInliers.clear();
@@ -174,7 +174,7 @@ cv::Mat PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInlie
     if(N<mRansacMinInliers)
     {
         bNoMore = true;
-        return cv::Mat();
+        return Eigen::Matrix4d::Identity();
     }
 
     vector<size_t> vAvailableIndices;
@@ -215,13 +215,15 @@ cv::Mat PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInlie
                 mvbBestInliers = mvbInliersi;
                 mnBestInliers = mnInliersi;
 
-                cv::Mat Rcw(3,3,CV_64F,mRi);
-                cv::Mat tcw(3,1,CV_64F,mti);
-                Rcw.convertTo(Rcw,CV_32F);
-                tcw.convertTo(tcw,CV_32F);
-                mBestTcw = cv::Mat::eye(4,4,CV_32F);
-                Rcw.copyTo(mBestTcw.rowRange(0,3).colRange(0,3));
-                tcw.copyTo(mBestTcw.rowRange(0,3).col(3));
+                Eigen::Matrix3d Rcw;
+                Rcw << mRi[0][0], mRi[0][1], mRi[0][2],
+                       mRi[1][0], mRi[1][1], mRi[1][2],
+                       mRi[2][0], mRi[2][1], mRi[2][2];
+                Eigen::Vector3d tcw;
+                tcw << mti[0], mti[1], mti[2];
+                mBestTcw = Eigen::Matrix4d::Identity();
+                mBestTcw.block<3, 3>(0, 0) = Rcw;
+                mBestTcw.block<3, 1>(0, 3) = tcw;
             }
 
             if(Refine())
@@ -233,7 +235,7 @@ cv::Mat PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInlie
                     if(mvbRefinedInliers[i])
                         vbInliers[mvKeyPointIndices[i]] = true;
                 }
-                return mRefinedTcw.clone();
+                return mRefinedTcw;
             }
 
         }
@@ -251,11 +253,11 @@ cv::Mat PnPsolver::iterate(int nIterations, bool &bNoMore, vector<bool> &vbInlie
                 if(mvbBestInliers[i])
                     vbInliers[mvKeyPointIndices[i]] = true;
             }
-            return mBestTcw.clone();
+            return mBestTcw;
         }
     }
 
-    return cv::Mat();
+    return Eigen::Matrix4d::Identity();
 }
 
 bool PnPsolver::Refine()
@@ -292,13 +294,15 @@ bool PnPsolver::Refine()
 
     if(mnInliersi>mRansacMinInliers)
     {
-        cv::Mat Rcw(3,3,CV_64F,mRi);
-        cv::Mat tcw(3,1,CV_64F,mti);
-        Rcw.convertTo(Rcw,CV_32F);
-        tcw.convertTo(tcw,CV_32F);
-        mRefinedTcw = cv::Mat::eye(4,4,CV_32F);
-        Rcw.copyTo(mRefinedTcw.rowRange(0,3).colRange(0,3));
-        tcw.copyTo(mRefinedTcw.rowRange(0,3).col(3));
+        Eigen::Matrix3d Rcw;
+        Rcw << mRi[0][0], mRi[0][1], mRi[0][2],
+               mRi[1][0], mRi[1][1], mRi[1][2],
+               mRi[2][0], mRi[2][1], mRi[2][2];
+        Eigen::Vector3d tcw;
+        tcw << mti[0], mti[1], mti[2];
+        mRefinedTcw = Eigen::Matrix4d::Identity();
+        mRefinedTcw.block<3, 3>(0, 0) = Rcw;
+        mRefinedTcw.block<3, 1>(0, 3) = tcw;
         return true;
     }
 

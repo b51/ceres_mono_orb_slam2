@@ -56,7 +56,7 @@ class ORBmatcher {
 
   // Project MapPoints using a Similarity Transformation and search matches.
   // Used in loop detection (Loop Closing)
-  int SearchByProjection(KeyFrame* pKF, cv::Mat Scw,
+  int SearchByProjection(KeyFrame* pKF, const Eigen::Matrix4d& Scw,
                          const std::vector<MapPoint*>& vpPoints,
                          std::vector<MapPoint*>& vpMatched, int th);
 
@@ -75,7 +75,8 @@ class ORBmatcher {
                               int windowSize = 10);
 
   // Matching to triangulate new MapPoints. Check Epipolar Constraint.
-  int SearchForTriangulation(KeyFrame* pKF1, KeyFrame* pKF2, cv::Mat F12,
+  int SearchForTriangulation(KeyFrame* pKF1, KeyFrame* pKF2,
+                             const Eigen::Matrix3d& F12,
                              std::vector<pair<size_t, size_t> >& vMatchedPairs,
                              const bool bOnlyStereo);
 
@@ -83,7 +84,8 @@ class ORBmatcher {
   // [s12*R12|t12] In the stereo and RGB-D case, s12=1
   int SearchBySim3(KeyFrame* pKF1, KeyFrame* pKF2,
                    std::vector<MapPoint*>& vpMatches12, const float& s12,
-                   const cv::Mat& R12, const cv::Mat& t12, const float th);
+                   const Eigen::Matrix3d& R12, const Eigen::Vector3d& t12,
+                   const float th);
 
   // Project MapPoints into KeyFrame and search for duplicated MapPoints.
   int Fuse(KeyFrame* pKF, const vector<MapPoint*>& vpMapPoints,
@@ -91,7 +93,7 @@ class ORBmatcher {
 
   // Project MapPoints into KeyFrame using a given Sim3 and search for
   // duplicated MapPoints.
-  int Fuse(KeyFrame* pKF, cv::Mat Scw, const std::vector<MapPoint*>& vpPoints,
+  int Fuse(KeyFrame* pKF, Eigen::Matrix4d Scw, const std::vector<MapPoint*>& vpPoints,
            float th, vector<MapPoint*>& vpReplacePoint);
 
  public:
@@ -101,7 +103,7 @@ class ORBmatcher {
 
  protected:
   bool CheckDistEpipolarLine(const cv::KeyPoint& kp1, const cv::KeyPoint& kp2,
-                             const cv::Mat& F12, const KeyFrame* pKF);
+                             const Eigen::Matrix3d& F12, const KeyFrame* pKF);
 
   float RadiusByViewingCos(const float& viewCos);
 

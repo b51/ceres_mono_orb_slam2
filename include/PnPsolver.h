@@ -67,10 +67,11 @@ class PnPsolver {
   void SetRansacParameters(double probability = 0.99, int minInliers = 8 , int maxIterations = 300, int minSet = 4, float epsilon = 0.4,
                            float th2 = 5.991);
 
-  cv::Mat find(vector<bool> &vbInliers, int &nInliers);
+  Eigen::Matrix4d find(vector<bool> &vbInliers, int &nInliers);
 
-  cv::Mat iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers);
+  Eigen::Matrix4d iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers);
 
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
  private:
 
   void CheckInliers();
@@ -149,7 +150,7 @@ class PnPsolver {
   // Current Estimation
   double mRi[3][3];
   double mti[3];
-  cv::Mat mTcwi;
+  Eigen::Matrix4d mTcwi;
   vector<bool> mvbInliersi;
   int mnInliersi;
 
@@ -157,10 +158,10 @@ class PnPsolver {
   int mnIterations;
   vector<bool> mvbBestInliers;
   int mnBestInliers;
-  cv::Mat mBestTcw;
+  Eigen::Matrix4d mBestTcw;
 
   // Refined
-  cv::Mat mRefinedTcw;
+  Eigen::Matrix4d mRefinedTcw;
   vector<bool> mvbRefinedInliers;
   int mnRefinedInliers;
 

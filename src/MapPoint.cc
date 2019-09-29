@@ -29,7 +29,6 @@
  */
 
 #include "MapPoint.h"
-#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 
 #include <mutex>
@@ -89,8 +88,7 @@ MapPoint::MapPoint(const Eigen::Vector3d& pos, Map* map, Frame* frame,
       replaced_map_point_(NULL),
       map_(map) {
   world_pose_ = pos;
-  Eigen::Vector3d Ow =
-      MatEigenConverter::MatToVector3d(frame->GetCameraCenter());
+  Eigen::Vector3d Ow = frame->GetCameraCenter();
   normal_vector_ = world_pose_ - Ow;
   normal_vector_ = normal_vector_ / normal_vector_.norm();
 
@@ -111,22 +109,20 @@ MapPoint::MapPoint(const Eigen::Vector3d& pos, Map* map, Frame* frame,
   id_ = next_id_++;
 }
 
-void MapPoint::SetWorldPos(const cv::Mat& pos) {
+void MapPoint::SetWorldPos(const Eigen::Vector3d& pos) {
   unique_lock<mutex> lock2(global_mutex_);
   unique_lock<mutex> lock(mutex_pose_);
-  world_pose_ << pos.at<float>(0), pos.at<float>(1), pos.at<float>(2);
+  world_pose_ = pos;
 }
 
-cv::Mat MapPoint::GetWorldPos() {
+Eigen::Vector3d MapPoint::GetWorldPos() {
   unique_lock<mutex> lock(mutex_pose_);
-  cv::Mat _world_pose = MatEigenConverter::Vector3dToMat(world_pose_);
-  return _world_pose.clone();
+  return world_pose_;
 }
 
-cv::Mat MapPoint::GetNormal() {
+Eigen::Vector3d MapPoint::GetNormal() {
   unique_lock<mutex> lock(mutex_pose_);
-  cv::Mat _normal_vector = MatEigenConverter::Vector3dToMat(normal_vector_);
-  return _normal_vector.clone();
+  return normal_vector_;
 }
 
 KeyFrame* MapPoint::GetReferenceKeyFrame() {
@@ -357,15 +353,13 @@ void MapPoint::UpdateNormalAndDepth() {
                                         mend = observations.end();
        mit != mend; mit++) {
     KeyFrame* keyframe = mit->first;
-    Eigen::Vector3d Owi =
-        MatEigenConverter::MatToVector3d(keyframe->GetCameraCenter());
+    Eigen::Vector3d Owi = keyframe->GetCameraCenter();
     Eigen::Vector3d normali = world_pose_ - Owi;
     normal = normal + normali / normali.norm();
     n++;
   }
 
-  Eigen::Vector3d Ow =
-      MatEigenConverter::MatToVector3d(reference_keyframe->GetCameraCenter());
+  Eigen::Vector3d Ow = reference_keyframe->GetCameraCenter();
   Eigen::Vector3d PC = pos - Ow;
   const float dist = PC.norm();
   const int level =

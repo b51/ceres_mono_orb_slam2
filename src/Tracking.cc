@@ -40,7 +40,6 @@
 #include "FrameDrawer.h"
 #include "Initializer.h"
 #include "Map.h"
-#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 
 #include "CeresOptimizer.h"
@@ -152,8 +151,8 @@ void Tracking::SetLoopClosing(LoopClosing* loop_closing) {
 
 void Tracking::SetViewer(Viewer* viewer) { viewer_ = viewer; }
 
-cv::Mat Tracking::GrabImageMonocular(const cv::Mat& img,
-                                     const double& timestamp) {
+Eigen::Matrix4d Tracking::GrabImageMonocular(const cv::Mat& img,
+                                             const double& timestamp) {
   // static int frame_num = 0;
   img_gray_ = img;
 
@@ -180,7 +179,7 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat& img,
 
   Track();
 
-  return current_frame_.Tcw_.clone();
+  return current_frame_.Tcw_;
 }
 
 void Tracking::Track() {
@@ -199,6 +198,7 @@ void Tracking::Track() {
     if (state_ != OK) {
       return;
     }
+    viewer_->SetFollowCamera();
   } else {
     // System is initialized. Track Frame.
     bool is_OK;
@@ -213,7 +213,7 @@ void Tracking::Track() {
         // Local Mapping might have changed some MapPoints tracked in last frame
         CheckReplacedInLastFrame();
 
-        if (velocity_.empty() ||
+        if (velocity_.isIdentity() ||
             current_frame_.id_ < last_reloc_frame_id_ + 2) {
           is_OK = TrackReferenceKeyFrame();
         } else {
@@ -232,7 +232,7 @@ void Tracking::Track() {
       } else {
         if (!do_vo_) {
           // In last frame we tracked enough MapPoints in the map
-          if (!velocity_.empty()) {
+          if (!velocity_.isIdentity()) {
             is_OK = TrackWithMotionModel();
           } else {
             is_OK = TrackReferenceKeyFrame();
@@ -248,12 +248,12 @@ void Tracking::Track() {
           bool is_reloc_OK = false;
           vector<MapPoint*> motion_model_map_points;
           vector<bool> is_motion_model_outliers;
-          cv::Mat motion_model_Tcw;
-          if (!velocity_.empty()) {
+          Eigen::Matrix4d motion_model_Tcw;
+          if (!velocity_.isIdentity()) {
             is_motion_model_OK = TrackWithMotionModel();
             motion_model_map_points = current_frame_.map_points_;
             is_motion_model_outliers = current_frame_.is_outliers_;
-            motion_model_Tcw = current_frame_.Tcw_.clone();
+            motion_model_Tcw = current_frame_.Tcw_;
           }
           is_reloc_OK = Relocalization();
 
@@ -308,14 +308,13 @@ void Tracking::Track() {
     // If tracking were good, check if we insert a keyframe
     if (is_OK) {
       // Update motion model
-      if (!last_frame_.Tcw_.empty()) {
-        cv::Mat last_Twc = cv::Mat::eye(4, 4, CV_32F);
-        last_frame_.GetRotationInverse().copyTo(
-            last_Twc.rowRange(0, 3).colRange(0, 3));
-        last_frame_.GetCameraCenter().copyTo(last_Twc.rowRange(0, 3).col(3));
+      if (!last_frame_.Tcw_.isIdentity()) {
+        Eigen::Matrix4d last_Twc = Eigen::Matrix4d::Identity();
+        last_Twc.block<3, 3>(0, 0) = last_frame_.GetRotationInverse();
+        last_Twc.block<3, 1>(0, 3) = last_frame_.GetCameraCenter();
         velocity_ = current_frame_.Tcw_ * last_Twc;
       } else {
-        velocity_ = cv::Mat();
+        velocity_ = Eigen::Matrix4d::Identity();
       }
 
       map_drawer_->SetCurrentCameraPose(current_frame_.Tcw_);
@@ -364,9 +363,9 @@ void Tracking::Track() {
 
   // Store frame pose information to retrieve the complete camera trajectory
   // afterwards.
-  if (!current_frame_.Tcw_.empty()) {
-    cv::Mat Tcr = current_frame_.Tcw_ *
-                  current_frame_.reference_keyframe_->GetPoseInverse();
+  if (!current_frame_.Tcw_.isIdentity()) {
+    Eigen::Matrix4d Tcr = current_frame_.Tcw_ *
+                          current_frame_.reference_keyframe_->GetPoseInverse();
     relative_frame_poses_.push_back(Tcr);
     reference_keyframes_.push_back(reference_keyframe_);
     frame_times_.push_back(current_frame_.timestamp_);
@@ -437,13 +436,11 @@ void Tracking::MonocularInitialization() {
       }
 
       // Set Frame Poses
-      init_frame_.SetPose(cv::Mat::eye(4, 4, CV_32F));
+      init_frame_.SetPose(Eigen::Matrix4d::Identity());
 
-      // TODO(b51): Remove cv::Mat
-      Eigen::Matrix4d _Tcw = Eigen::Matrix4d::Identity();
-      _Tcw.block<3, 3>(0, 0) = Rcw;
-      _Tcw.block<3, 1>(0, 3) = tcw;
-      cv::Mat Tcw = MatEigenConverter::Matrix4dToMat(_Tcw);
+      Eigen::Matrix4d Tcw = Eigen::Matrix4d::Identity();
+      Tcw.block<3, 3>(0, 0) = Rcw;
+      Tcw.block<3, 1>(0, 3) = tcw;
 
       current_frame_.SetPose(Tcw);
 
@@ -512,8 +509,9 @@ void Tracking::CreateInitialMapMonocular() {
   }
 
   // Scale initial baseline
-  cv::Mat Tc2w = current_keyframe->GetPose();
-  Tc2w.col(3).rowRange(0, 3) = Tc2w.col(3).rowRange(0, 3) * inv_median_depth;
+  Eigen::Matrix4d Tc2w = current_keyframe->GetPose();
+  // Tc2w.col(3).rowRange(0, 3) = Tc2w.col(3).rowRange(0, 3) * inv_median_depth;
+  Tc2w.block<3, 1>(0, 3) = Tc2w.block<3, 1>(0, 3) * inv_median_depth;
   current_keyframe->SetPose(Tc2w);
 
   // Scale points
@@ -563,7 +561,7 @@ void Tracking::CheckReplacedInLastFrame() {
 }
 
 bool Tracking::TrackReferenceKeyFrame() {
-  LOG(WARNING) << "Track ReferenceKeyFrame";
+  // LOG(WARNING) << "Track ReferenceKeyFrame";
   // Compute Bag of Words vector
   current_frame_.ComputeBoW();
 
@@ -575,7 +573,7 @@ bool Tracking::TrackReferenceKeyFrame() {
   int nmatches = matcher.SearchByBoW(reference_keyframe_, current_frame_,
                                      matched_map_points);
 
-  LOG(INFO) << "TrackReferenceKeyFrame nmatches: " << nmatches;
+  // LOG(INFO) << "TrackReferenceKeyFrame nmatches: " << nmatches;
   if (nmatches < 15) {
     return false;
   }
@@ -608,13 +606,13 @@ bool Tracking::TrackReferenceKeyFrame() {
 void Tracking::UpdateLastFrame() {
   // Update pose according to reference keyframe
   KeyFrame* reference_keyframe = last_frame_.reference_keyframe_;
-  cv::Mat Tlr = relative_frame_poses_.back();
+  Eigen::Matrix4d Tlr = relative_frame_poses_.back();
 
   last_frame_.SetPose(Tlr * reference_keyframe->GetPose());
 }
 
 bool Tracking::TrackWithMotionModel() {
-  LOG(WARNING) << "Track With Motion Model";
+  // LOG(WARNING) << "Track With Motion Model";
   ORBmatcher matcher(0.9, true);
 
   // Update last frame pose according to its reference keyframe
@@ -670,7 +668,7 @@ bool Tracking::TrackWithMotionModel() {
 }
 
 bool Tracking::TrackLocalMap() {
-  LOG(WARNING) << "Track Local Map";
+  // LOG(WARNING) << "Track Local Map";
   // We have an estimation of the camera pose and some map points tracked in the
   // frame. We retrieve the local map and try to find matches to points in the
   // local map.
@@ -975,7 +973,7 @@ void Tracking::UpdateLocalKeyFrames() {
 }
 
 bool Tracking::Relocalization() {
-  LOG(WARNING) << " Relocalization Enter ";
+  // LOG(WARNING) << " Relocalization Enter ";
   // Compute Bag of Words Vector
   current_frame_.ComputeBoW();
 
@@ -985,8 +983,8 @@ bool Tracking::Relocalization() {
   vector<KeyFrame*> candidate_keyframes =
       keyframe_database_->DetectRelocalizationCandidates(&current_frame_);
 
-  LOG(INFO) << " Relocalization candidate keyframe size: "
-            << candidate_keyframes.size();
+  // LOG(INFO) << " Relocalization candidate keyframe size: "
+  //          << candidate_keyframes.size();
 
   if (candidate_keyframes.empty()) {
     return false;
@@ -1044,7 +1042,8 @@ bool Tracking::Relocalization() {
       bool is_no_more;
 
       PnPsolver* pSolver = PnP_solvers[i];
-      cv::Mat Tcw = pSolver->iterate(5, is_no_more, is_inliers, n_inliers);
+      Eigen::Matrix4d Tcw =
+          pSolver->iterate(5, is_no_more, is_inliers, n_inliers);
 
       // If Ransac reachs max. iterations discard keyframe
       if (is_no_more) {
@@ -1053,8 +1052,8 @@ bool Tracking::Relocalization() {
       }
 
       // If a Camera Pose is computed, optimize
-      if (!Tcw.empty()) {
-        Tcw.copyTo(current_frame_.Tcw_);
+      if (!Tcw.isIdentity()) {
+        current_frame_.Tcw_ = Tcw;
 
         std::set<MapPoint*> map_points_founded;
 
@@ -1123,7 +1122,7 @@ bool Tracking::Relocalization() {
     }
   }
 
-  LOG(INFO) << " Relocalization done, is matched? " << is_match;
+  // LOG(INFO) << " Relocalization done, is matched? " << is_match;
   if (!is_match) {
     return false;
   } else {

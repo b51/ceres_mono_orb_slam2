@@ -47,28 +47,31 @@ class Sim3Solver {
   void SetRansacParameters(double probability = 0.99, int min_inliers = 6,
                            int max_iterations = 300);
 
-  cv::Mat find(std::vector<bool>& vbInliers12, int& n_inliers);
+  Eigen::Matrix4d find(std::vector<bool>& vbInliers12, int& n_inliers);
 
-  cv::Mat iterate(int n_iterations, bool& is_no_more,
-                  std::vector<bool>& is_inliers, int& n_inliers);
+  Eigen::Matrix4d iterate(int n_iterations, bool& is_no_more,
+                          std::vector<bool>& is_inliers, int& n_inliers);
 
-  cv::Mat GetEstimatedRotation();
-  cv::Mat GetEstimatedTranslation();
+  Eigen::Matrix3d GetEstimatedRotation();
+  Eigen::Vector3d GetEstimatedTranslation();
   float GetEstimatedScale();
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  protected:
-  void ComputeCentroid(Eigen::Matrix3d& P, Eigen::Matrix3d& Pr, Eigen::Vector3d& C);
+  void ComputeCentroid(Eigen::Matrix3d& P, Eigen::Matrix3d& Pr,
+                       Eigen::Vector3d& C);
 
   void ComputeSim3(Eigen::Matrix3d& P1, Eigen::Matrix3d& P2);
 
   void CheckInliers();
 
-  void Project(const std::vector<Eigen::Vector3d>& P3Dsw, std::vector<Eigen::Vector2d>& P2Ds,
-               Eigen::Matrix4d Tcw, Eigen::Matrix3d& K);
+  void Project(const std::vector<Eigen::Vector3d>& P3Dsw,
+               std::vector<Eigen::Vector2d>& P2Ds, Eigen::Matrix4d Tcw,
+               Eigen::Matrix3d& K);
   void FromCameraToImage(const std::vector<Eigen::Vector3d>& vP3Dc,
-                         std::vector<Eigen::Vector2d>& P2Ds, Eigen::Matrix3d& K);
+                         std::vector<Eigen::Vector2d>& P2Ds,
+                         Eigen::Matrix3d& K);
 
  protected:
   // KeyFrames and matches

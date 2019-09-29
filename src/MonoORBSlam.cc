@@ -16,8 +16,6 @@
 #include <iomanip>
 #include <thread>
 
-#include "MatEigenConverter.h"
-
 namespace ORB_SLAM2 {
 
 MonoORBSlam::MonoORBSlam(const string& voc_file,
@@ -100,8 +98,8 @@ MonoORBSlam::MonoORBSlam(const string& voc_file,
   loop_closer_->SetLocalMapper(local_mapper_);
 }
 
-cv::Mat MonoORBSlam::TrackMonocular(const cv::Mat& img,
-                                    const double& timestamp) {
+Eigen::Matrix4d MonoORBSlam::TrackMonocular(const cv::Mat& img,
+                                            const double& timestamp) {
   {
     unique_lock<mutex> lock(mutex_mode_);
     if (is_activate_localization_mode_) {
@@ -130,7 +128,7 @@ cv::Mat MonoORBSlam::TrackMonocular(const cv::Mat& img,
     }
   }
 
-  cv::Mat Tcw = tracker_->GrabImageMonocular(img, timestamp);
+  Eigen::Matrix4d Tcw = tracker_->GrabImageMonocular(img, timestamp);
 
   unique_lock<mutex> lock2(mutex_state_);
   tracking_state_ = tracker_->state_;
@@ -211,13 +209,12 @@ void MonoORBSlam::SaveKeyFrameTrajectoryTUM(const string& filename) {
       continue;
     }
 
-    Eigen::Matrix3d R =
-        MatEigenConverter::MatToMatrix3d(keyframe->GetRotation().t());
+    Eigen::Matrix3d R = keyframe->GetRotation().transpose();
     Eigen::Quaterniond q(R);
-    cv::Mat t = keyframe->GetCameraCenter();
+    Eigen::Vector3d t = keyframe->GetCameraCenter();
     f << setprecision(6) << keyframe->timestamp_ << setprecision(7) << " "
-      << t.at<float>(0) << " " << t.at<float>(1) << " " << t.at<float>(2) << " "
-      << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << endl;
+      << t[0] << " " << t[1] << " " << t[2] << " " << q.x() << " " << q.y()
+      << " " << q.z() << " " << q.w() << endl;
   }
   f.close();
   LOG(INFO) << "trajectory saved!";

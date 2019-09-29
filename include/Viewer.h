@@ -63,6 +63,8 @@ class Viewer {
 
   bool isStopped();
 
+  void SetFollowCamera();
+
   void Release();
 
  private:
@@ -83,6 +85,7 @@ class Viewer {
   void SetFinish();
   bool is_finish_requested_;
   bool is_finished_;
+  bool is_follow_;
   std::mutex mutex_finish_;
 
   bool is_stopped_;
