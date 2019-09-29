@@ -92,7 +92,7 @@ class Tracking {
   // Lists used to recover the full camera trajectory at the end of the
   // execution. Basically we store the reference keyframe for each frame and its
   // relative transformation
-  list<cv::Mat> relative_frame_poses_;
+  list<Eigen::Matrix4d> relative_frame_poses_;
   list<KeyFrame*> reference_keyframes_;
   list<double> frame_times_;
   list<bool> do_lostes_;
@@ -196,7 +196,7 @@ class Tracking {
   unsigned int last_reloc_frame_id_;
 
   // Motion Model
-  cv::Mat velocity_;
+  Eigen::Matrix4d velocity_;
 
   // Color order (true RGB, false BGR, ignored if grayscale)
   bool is_rgb_;

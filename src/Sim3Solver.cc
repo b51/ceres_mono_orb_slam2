@@ -62,14 +62,10 @@ Sim3Solver::Sim3Solver(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
   X3Dsc1_.reserve(N1_);
   X3Dsc2_.reserve(N1_);
 
-  Eigen::Matrix3d Rcw1 =
-      MatEigenConverter::MatToMatrix3d(keyframe_1->GetRotation());
-  Eigen::Vector3d tcw1 =
-      MatEigenConverter::MatToVector3d(keyframe_1->GetTranslation());
-  Eigen::Matrix3d Rcw2 =
-      MatEigenConverter::MatToMatrix3d(keyframe_2->GetRotation());
-  Eigen::Vector3d tcw2 =
-      MatEigenConverter::MatToVector3d(keyframe_2->GetTranslation());
+  Eigen::Matrix3d Rcw1 = keyframe_1->GetRotation();
+  Eigen::Vector3d tcw1 = keyframe_1->GetTranslation();
+  Eigen::Matrix3d Rcw2 = keyframe_2->GetRotation();
+  Eigen::Vector3d tcw2 = keyframe_2->GetTranslation();
 
   all_indices_.reserve(N1_);
 
@@ -150,15 +146,15 @@ void Sim3Solver::SetRansacParameters(double probability, int min_inliers,
   n_iterations_ = 0;
 }
 
-cv::Mat Sim3Solver::iterate(int n_iterations, bool& is_no_more,
-                            vector<bool>& is_inliers, int& n_inliers) {
+Eigen::Matrix4d Sim3Solver::iterate(int n_iterations, bool& is_no_more,
+                                    vector<bool>& is_inliers, int& n_inliers) {
   is_no_more = false;
   is_inliers = vector<bool>(N1_, false);
   n_inliers = 0;
 
   if (N_ < ransac_min_inliers_) {
     is_no_more = true;
-    return cv::Mat();
+    return Eigen::Matrix4d::Identity();
   }
 
   vector<size_t> available_indices;
@@ -207,17 +203,17 @@ cv::Mat Sim3Solver::iterate(int n_iterations, bool& is_no_more,
           if (is_inliers_i_[i]) {
             is_inliers[matched_indices_1_[i]] = true;
           }
-        return MatEigenConverter::Matrix4dToMat(best_T12_);
+        return best_T12_;
       }
     }
   }
 
   if (n_iterations_ >= ransac_max_iterations_) is_no_more = true;
 
-  return cv::Mat();
+  return Eigen::Matrix4d::Identity();
 }
 
-cv::Mat Sim3Solver::find(vector<bool>& vbInliers12, int& n_inliers) {
+Eigen::Matrix4d Sim3Solver::find(vector<bool>& vbInliers12, int& n_inliers) {
   bool flag;
   return iterate(ransac_max_iterations_, flag, vbInliers12, n_inliers);
 }
@@ -390,12 +386,10 @@ void Sim3Solver::CheckInliers() {
   }
 }
 
-cv::Mat Sim3Solver::GetEstimatedRotation() {
-  return MatEigenConverter::Matrix3dToMat(best_rotation_);
-}
+Eigen::Matrix3d Sim3Solver::GetEstimatedRotation() { return best_rotation_; }
 
-cv::Mat Sim3Solver::GetEstimatedTranslation() {
-  return MatEigenConverter::Vector3dToMat(best_translation_);
+Eigen::Vector3d Sim3Solver::GetEstimatedTranslation() {
+  return best_translation_;
 }
 
 float Sim3Solver::GetEstimatedScale() { return best_scale_; }

@@ -35,11 +35,12 @@ class MatEigenConverter {
   static cv::Mat Vector3dToMat(const Eigen::Vector3d& t);
 
   // Matrix_7_1
-  static Eigen::Matrix<double, 7, 1> MatToMatrix_7_1(const cv::Mat& pose);
-  static cv::Mat Matrix_7_1_ToMat(const Eigen::Matrix<double, 7, 1>& Tcw_7_1);
+  static Eigen::Matrix<double, 7, 1> Matrix4dToMatrix_7_1(const cv::Mat& pose);
+  static Eigen::Matrix4d Matrix_7_1_ToMatrix4d(
+      const Eigen::Matrix<double, 7, 1>& Tcw_7_1);
 
   // Sim3
-  static cv::Mat Sim3ToMat(const Sim3& sim);
+  static Eigen::Matrix4d Sim3ToMatrix4d(const Sim3& sim);
 };
 
 #endif

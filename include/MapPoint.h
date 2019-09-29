@@ -51,10 +51,10 @@ class MapPoint {
   MapPoint(const Eigen::Vector3d& pos, KeyFrame* reference_keyframe, Map* map);
   MapPoint(const Eigen::Vector3d& pos, Map* map, Frame* frame, const int& idxF);
 
-  void SetWorldPos(const cv::Mat& pos);
-  cv::Mat GetWorldPos();
+  void SetWorldPos(const Eigen::Vector3d& pos);
+  Eigen::Vector3d GetWorldPos();
 
-  cv::Mat GetNormal();
+  Eigen::Vector3d GetNormal();
   KeyFrame* GetReferenceKeyFrame();
 
   std::map<KeyFrame*, size_t> GetObservations();
@@ -113,7 +113,7 @@ class MapPoint {
   long unsigned int loop_point_for_keyframe_;
   long unsigned int corrected_by_keyframe_;
   long unsigned int corrected_reference_;
-  cv::Mat global_BA_pose_;
+  Eigen::Vector3d global_BA_pose_;
   long unsigned n_BA_global_for_keyframe_;
 
   static std::mutex global_mutex_;

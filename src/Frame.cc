@@ -85,7 +85,7 @@ Frame::Frame(const Frame& frame)
     }
   }
 
-  if (!frame.Tcw_.empty()) SetPose(frame.Tcw_);
+  if (!frame.Tcw_.isZero()) SetPose(frame.Tcw_);
 }
 
 Frame::Frame(const cv::Mat& imgGray, const double& timestamp,
@@ -175,29 +175,29 @@ void Frame::ExtractORB(int flag, const cv::Mat& img) {
   (*orb_extractor_left_)(img, cv::Mat(), keypoints_, descriptors_);
 }
 
-void Frame::SetPose(cv::Mat Tcw) {
-  Tcw_ = Tcw.clone();
+void Frame::SetPose(Eigen::Matrix4d Tcw) {
+  Tcw_ = Tcw;
   UpdatePoseMatrices();
 }
 
 void Frame::UpdatePoseMatrices() {
-  Rcw_ = Tcw_.rowRange(0, 3).colRange(0, 3);
-  Rwc_ = Rcw_.t();
-  tcw_ = Tcw_.rowRange(0, 3).col(3);
-  Ow_ = -Rcw_.t() * tcw_;
+  Rcw_ = Tcw_.block<3, 3>(0, 0);
+  Rwc_ = Rcw_.transpose();
+  tcw_ = Tcw_.block<3, 1>(0, 3);
+  Ow_ = -Rcw_.transpose() * tcw_;
 }
 
 bool Frame::isInFrustum(MapPoint* map_point, float viewingCosLimit) {
   map_point->is_track_in_view_ = false;
 
   // 3D in absolute coordinates
-  cv::Mat P = map_point->GetWorldPos();
+  Eigen::Vector3d P = map_point->GetWorldPos();
 
   // 3D in camera coordinates
-  const cv::Mat Pc = Rcw_ * P + tcw_;
-  const float& PcX = Pc.at<float>(0);
-  const float& PcY = Pc.at<float>(1);
-  const float& PcZ = Pc.at<float>(2);
+  const Eigen::Vector3d Pc = Rcw_ * P + tcw_;
+  const float& PcX = Pc[0];
+  const float& PcY = Pc[1];
+  const float& PcZ = Pc[2];
 
   // Check positive depth
   if (PcZ < 0.0f) return false;
@@ -213,13 +213,13 @@ bool Frame::isInFrustum(MapPoint* map_point, float viewingCosLimit) {
   // Check distance is in the scale invariance region of the MapPoint
   const float maxDistance = map_point->GetMaxDistanceInvariance();
   const float minDistance = map_point->GetMinDistanceInvariance();
-  const cv::Mat PO = P - Ow_;
-  const float dist = cv::norm(PO);
+  const Eigen::Vector3d PO = P - Ow_;
+  const float dist = PO.norm();
 
   if (dist < minDistance || dist > maxDistance) return false;
 
   // Check viewing angle
-  cv::Mat Pn = map_point->GetNormal();
+  Eigen::Vector3d Pn = map_point->GetNormal();
 
   const float viewCos = PO.dot(Pn) / dist;
 
@@ -559,20 +559,6 @@ void Frame::ComputeStereoMatches() {
       mvuRight[vDistIdx[i].second] = -1;
       depthes_[vDistIdx[i].second] = -1;
     }
-  }
-}
-
-cv::Mat Frame::UnprojectStereo(const int& i) {
-  const float z = depthes_[i];
-  if (z > 0) {
-    const float u = undistort_keypoints_[i].pt.x;
-    const float v = undistort_keypoints_[i].pt.y;
-    const float x = (u - cx_) * z * invfx_;
-    const float y = (v - cy_) * z * invfy_;
-    cv::Mat x3Dc = (cv::Mat_<float>(3, 1) << x, y, z);
-    return Rwc_ * x3Dc + Ow_;
-  } else {
-    return cv::Mat();
   }
 }
 

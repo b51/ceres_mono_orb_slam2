@@ -149,7 +149,7 @@ class PnPsolver {
   // Current Estimation
   double mRi[3][3];
   double mti[3];
-  cv::Mat mTcwi;
+  Eigen::Matrix4d mTcwi;
   vector<bool> mvbInliersi;
   int mnInliersi;
 
@@ -157,10 +157,10 @@ class PnPsolver {
   int mnIterations;
   vector<bool> mvbBestInliers;
   int mnBestInliers;
-  cv::Mat mBestTcw;
+  Eigen::Matrix4d mBestTcw;
 
   // Refined
-  cv::Mat mRefinedTcw;
+  Eigen::Matrix4d mRefinedTcw;
   vector<bool> mvbRefinedInliers;
   int mnRefinedInliers;
 

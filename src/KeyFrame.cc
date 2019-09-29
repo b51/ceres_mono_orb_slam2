@@ -116,49 +116,45 @@ void KeyFrame::ComputeBoW() {
   }
 }
 
-void KeyFrame::SetPose(const cv::Mat& Tcw) {
+void KeyFrame::SetPose(const Eigen::Matrix4d& Tcw) {
   unique_lock<mutex> lock(mutex_pose_);
-  Tcw.copyTo(Tcw_);
-  cv::Mat Rcw = Tcw_.rowRange(0, 3).colRange(0, 3);
-  cv::Mat tcw = Tcw_.rowRange(0, 3).col(3);
-  cv::Mat Rwc = Rcw.t();
+  Tcw_ = Tcw;
+  Eigen::Matrix3d Rcw = Tcw_.block<3, 3>(0, 0);
+  Eigen::Vector3d tcw = Tcw_.block<3, 1>(0, 3);
+  Eigen::Matrix3d Rwc = Rcw.transpose();
   Ow_ = -Rwc * tcw;
 
-  Twc_ = cv::Mat::eye(4, 4, Tcw_.type());
-  Rwc.copyTo(Twc_.rowRange(0, 3).colRange(0, 3));
-  Ow_.copyTo(Twc_.rowRange(0, 3).col(3));
-  cv::Mat center = (cv::Mat_<float>(4, 1) << half_baseline_, 0, 0, 1);
+  Twc_ = Eigen::Matrix4d::Identity();
+  Twc_.block<3, 3>(0, 0) = Rwc;
+  Twc_.bloci<3, 1>(0, 3) = Ow_;
+  Eigen::Vector4d center;
+  center << half_baseline_, 0, 0, 1;
   Cw_ = Twc_ * center;
 }
 
-cv::Mat KeyFrame::GetPose() {
+Eigen::Matrix4d KeyFrame::GetPose() {
   unique_lock<mutex> lock(mutex_pose_);
-  return Tcw_.clone();
+  return Tcw_;
 }
 
-cv::Mat KeyFrame::GetPoseInverse() {
+Eigen::Matrix4d KeyFrame::GetPoseInverse() {
   unique_lock<mutex> lock(mutex_pose_);
-  return Twc_.clone();
+  return Twc_;
 }
 
-cv::Mat KeyFrame::GetCameraCenter() {
+Eigen::Vector3d KeyFrame::GetCameraCenter() {
   unique_lock<mutex> lock(mutex_pose_);
-  return Ow_.clone();
+  return Ow_;
 }
 
-cv::Mat KeyFrame::GetStereoCenter() {
+Eigen::Matrix3d KeyFrame::GetRotation() {
   unique_lock<mutex> lock(mutex_pose_);
-  return Cw_.clone();
+  return Tcw_.block<3, 3>(0, 0);
 }
 
-cv::Mat KeyFrame::GetRotation() {
+Eigen::Vector3d KeyFrame::GetTranslation() {
   unique_lock<mutex> lock(mutex_pose_);
-  return Tcw_.rowRange(0, 3).colRange(0, 3).clone();
-}
-
-cv::Mat KeyFrame::GetTranslation() {
-  unique_lock<mutex> lock(mutex_pose_);
-  return Tcw_.rowRange(0, 3).col(3).clone();
+  return Tcw_.block<3, 1>(0, 3);
 }
 
 void KeyFrame::AddConnection(KeyFrame* keyframe, const int& weight) {
@@ -631,42 +627,26 @@ bool KeyFrame::IsInImage(const float& x, const float& y) const {
   return (x >= min_x_ && x < max_x_ && y >= min_y_ && y < max_y_);
 }
 
-cv::Mat KeyFrame::UnprojectStereo(int i) {
-  const float z = depthes_[i];
-  if (z > 0) {
-    const float u = keypoints_[i].pt.x;
-    const float v = keypoints_[i].pt.y;
-    const float x = (u - cx_) * z * invfx_;
-    const float y = (v - cy_) * z * invfy_;
-    cv::Mat x3Dc = (cv::Mat_<float>(3, 1) << x, y, z);
-
-    unique_lock<mutex> lock(mutex_pose_);
-    return Twc_.rowRange(0, 3).colRange(0, 3) * x3Dc +
-           Twc_.rowRange(0, 3).col(3);
-  } else {
-    return cv::Mat();
-  }
-}
-
 float KeyFrame::ComputeSceneMedianDepth(const int q) {
   vector<MapPoint*> map_points;
-  cv::Mat Tcw;
+  Eigen::Matrix4d Tcw;
   {
     unique_lock<mutex> lock(mutex_features_);
     unique_lock<mutex> lock2(mutex_pose_);
     map_points = map_points_;
-    Tcw = Tcw_.clone();
+    Tcw = Tcw_;
   }
 
   vector<float> depths;
   depths.reserve(N_);
-  cv::Mat Rcw2 = Tcw.row(2).colRange(0, 3);
+  // Eigen::Vector3d Rcw2 = Tcw.row(2).colRange(0, 3);
+  Eigen::Vector3d Rcw2 = Tcw.block<1, 3>(2, 0).transpose();
   Rcw2 = Rcw2.t();
-  float zcw = Tcw.at<float>(2, 3);
+  float zcw = Tcw(2, 3);
   for (int i = 0; i < N_; i++) {
     if (map_points_[i]) {
       MapPoint* map_point = map_points_[i];
-      cv::Mat x3Dw = map_point->GetWorldPos();
+      Eigen::Vector3d x3Dw = map_point->GetWorldPos();
       float z = Rcw2.dot(x3Dw) + zcw;
       depths.push_back(z);
     }

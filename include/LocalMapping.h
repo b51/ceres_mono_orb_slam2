@@ -90,9 +90,9 @@ class LocalMapping {
 
   void KeyFrameCulling();
 
-  cv::Mat ComputeF12(KeyFrame*& pKF1, KeyFrame*& pKF2);
+  Eigen::Matrix3d ComputeF12(KeyFrame*& pKF1, KeyFrame*& pKF2);
 
-  cv::Mat SkewSymmetricMatrix(const cv::Mat& v);
+  Eigen::Vector3d SkewSymmetricMatrix(const Eigen::Vector3d& v);
 
   bool is_monocular_;
 

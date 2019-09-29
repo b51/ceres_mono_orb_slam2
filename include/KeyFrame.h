@@ -42,13 +42,12 @@ class KeyFrame {
   KeyFrame(Frame& frame, Map* map, KeyFrameDatabase* keyframe_database);
 
   // Pose functions
-  void SetPose(const cv::Mat& Tcw);
-  cv::Mat GetPose();
-  cv::Mat GetPoseInverse();
-  cv::Mat GetCameraCenter();
-  cv::Mat GetStereoCenter();
-  cv::Mat GetRotation();
-  cv::Mat GetTranslation();
+  void SetPose(const Eigen::Matrix4d& Tcw);
+  Eigen::Matrix4d GetPose();
+  Eigen::Matrix4d GetPoseInverse();
+  Eigen::Vector3d GetCameraCenter();
+  Eigen::Matrix3d GetRotation();
+  Eigen::Vector3d GetTranslation();
 
   // Bag of Words Representation
   void ComputeBoW();
@@ -89,7 +88,6 @@ class KeyFrame {
   // KeyPoint functions
   std::vector<size_t> GetFeaturesInArea(const float& x, const float& y,
                                         const float& r) const;
-  cv::Mat UnprojectStereo(int i);
 
   // Image
   bool IsInImage(const float& x, const float& y) const;
@@ -143,8 +141,8 @@ class KeyFrame {
   float reloc_score_;
 
   // Variables used by loop closing
-  cv::Mat global_BA_Tcw_;
-  cv::Mat global_BA_Bef_Tcw_;
+  Eigen::Matrix4d global_BA_Tcw_;
+  Eigen::Matrix4d global_BA_Bef_Tcw_;
   long unsigned int n_BA_global_for_keyframe_;
 
   // Calibration parameters
@@ -165,7 +163,7 @@ class KeyFrame {
   DBoW2::FeatureVector feature_vector_;
 
   // Pose relative to parent (this is computed when bad flag is activated)
-  cv::Mat Tcp_;
+  Eigen::Matrix4d Tcp_;
 
   // Scale
   const int n_scale_levels_;
@@ -186,11 +184,11 @@ class KeyFrame {
   // safe.
  protected:
   // SE3 Pose and camera center
-  cv::Mat Tcw_;
-  cv::Mat Twc_;
-  cv::Mat Ow_;
+  Eigen::Matrix4d Tcw_;
+  Eigen::Matrix4d Twc_;
+  Eigen::Vector3d Ow_;
 
-  cv::Mat Cw_;  // Stereo middel point. Only for visualization
+  Eigen::Vector3d Cw_;  // Stereo middel point. Only for visualization
 
   // MapPoints associated to keypoints
   std::vector<MapPoint*> map_points_;

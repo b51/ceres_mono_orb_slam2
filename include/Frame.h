@@ -68,17 +68,17 @@ class Frame {
   void ComputeBoW();
 
   // Set the camera pose.
-  void SetPose(cv::Mat Tcw);
+  void SetPose(Eigen::Matrix4d Tcw);
 
   // Computes rotation, translation and camera center matrices from the camera
   // pose.
   void UpdatePoseMatrices();
 
   // Returns the camera center.
-  inline cv::Mat GetCameraCenter() { return Ow_.clone(); }
+  inline Eigen::Vector3d GetCameraCenter() { return Ow_; }
 
   // Returns inverse of rotation
-  inline cv::Mat GetRotationInverse() { return Rwc_.clone(); }
+  inline Eigen::Matrix3d GetRotationInverse() { return Rwc_; }
 
   // Check if a MapPoint is in the frustum of the camera
   // and fill variables of the MapPoint to be used by the tracking
@@ -95,10 +95,6 @@ class Frame {
   // right image. If there is a match, depth is computed and the right
   // coordinate associated to the left keypoint is stored.
   void ComputeStereoMatches();
-
-  // Backprojects a keypoint (if stereo/depth info available) into 3D world
-  // coordinates.
-  cv::Mat UnprojectStereo(const int& i);
 
  public:
   // Vocabulary used for relocalization.
@@ -164,7 +160,7 @@ class Frame {
   std::vector<std::size_t> grid_[FRAME_GRID_COLS][FRAME_GRID_ROWS];
 
   // Camera pose.
-  cv::Mat Tcw_;
+  Eigen::Matrix4d Tcw_;
 
   // Current and Next Frame id.
   static long unsigned int next_id_;
@@ -205,10 +201,10 @@ class Frame {
   void AssignFeaturesToGrid();
 
   // Rotation, translation and camera center
-  cv::Mat Rcw_;
-  cv::Mat tcw_;
-  cv::Mat Rwc_;
-  cv::Mat Ow_;  //==mtwc
+  Eigen::Matrix3d Rcw_;
+  Eigen::Vector3d tcw_;
+  Eigen::Matrix3d Rwc_;
+  Eigen::Vector3d Ow_;  //==mtwc
 };
 
 }  // namespace ORB_SLAM2

@@ -49,8 +49,7 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     Eigen::Matrix<double, 7, 1> keyframe_Tcw;
 
     // Get keyframe Poses
-    Eigen::Matrix4d kf_pose =
-        MatEigenConverter::MatToMatrix4d(keyframe->GetPose());
+    Eigen::Matrix4d kf_pose = keyframe->GetPose();
     Eigen::Matrix3d keyframe_R = kf_pose.block<3, 3>(0, 0);
     keyframe_Tcw.block<3, 1>(0, 0) = kf_pose.block<3, 1>(0, 3);
 
@@ -80,8 +79,7 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
       continue;
     }
 
-    ided_map_point_pose[i] =
-        MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
+    ided_map_point_pose[i] = map_point->GetWorldPos();
 
     const map<KeyFrame*, size_t> observations = map_point->GetObservations();
 
@@ -152,12 +150,12 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     }
     Eigen::Matrix<double, 7, 1> Tcw = it->second;
     // Eigen Quaterniond constructed with [w, x, y, z], not same as coeffs
-    cv::Mat pose = MatEigenConverter::Matrix_7_1_ToMat(Tcw);
+    Eigen::Matrix4d pose = MatEigenConverter::Matrix_7_1_ToMatrix4d(Tcw);
     if (n_loop_keyframe == 0) {
       it->first->SetPose(pose);
     } else {
       it->first->global_BA_Tcw_.create(4, 4, CV_32F);
-      pose.copyTo(it->first->global_BA_Tcw_);
+      it->first->global_BA_Tcw_ = pose;
       it->first->n_BA_global_for_keyframe_ = n_loop_keyframe;
     }
   }
@@ -173,14 +171,11 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
       continue;
     }
 
-    cv::Mat pose = MatEigenConverter::Vector3dToMat(ided_map_point_pose[i]);
-
     if (n_loop_keyframe == 0) {
-      map_point->SetWorldPos(pose);
+      map_point->SetWorldPos(ided_map_point_pose[i]);
       map_point->UpdateNormalAndDepth();
     } else {
-      map_point->global_BA_pose_.create(3, 1, CV_32F);
-      pose.copyTo(map_point->global_BA_pose_);
+      map_point->global_BA_pose_ = ided_map_point_pose[i];
       map_point->n_BA_global_for_keyframe_ = n_loop_keyframe;
     }
   }
@@ -211,8 +206,7 @@ int CeresOptimizer::CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
   for (int i = 0; i < N; i++) {
     MapPoint* map_point = frame->map_points_[i];
     if (map_point) {
-      Eigen::Vector3d world_pose =
-          MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
+      Eigen::Vector3d world_pose = map_point->GetWorldPos();
       cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
       Eigen::Vector2d observation(undistort_keypoint.pt.x,
                                   undistort_keypoint.pt.y);
@@ -270,8 +264,7 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
         n_initial_correspondences++;
         frame->is_outliers_[i] = false;
         // Monocular observation
-        Eigen::Vector3d point_pose =
-            MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
+        Eigen::Vector3d point_pose = map_point->GetWorldPos();
 
         const cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
         Eigen::Vector2d observation(undistort_keypoint.pt.x,
@@ -297,10 +290,9 @@ int CeresOptimizer::PoseOptimization(Frame* frame) {
   }
 
   Eigen::Matrix3d R = frame_qcw.normalized().toRotationMatrix();
-  Eigen::Matrix4d _pose = Eigen::Matrix4d::Identity();
-  _pose.block<3, 3>(0, 0) = R;
-  _pose.block<3, 1>(0, 3) = frame_tcw;
-  cv::Mat pose = MatEigenConverter::Matrix4dToMat(_pose);
+  Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
+  pose.block<3, 3>(0, 0) = R;
+  pose.block<3, 1>(0, 3) = frame_tcw;
   frame->SetPose(pose);
   return n_initial_correspondences - n_bad;
 }
@@ -311,7 +303,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
   // ided keyframe for pose recovery after optimize
   std::map<KeyFrame*, Eigen::Matrix<double, 7, 1>> ided_local_keyframes;
   ided_local_keyframes[keyframe] =
-      MatEigenConverter::MatToMatrix_7_1(keyframe->GetPose());
+      MatEigenConverter::Matrix4dToMatrix_7_1(keyframe->GetPose());
   keyframe->n_BA_local_for_keyframe_ = keyframe->id_;
 
   const std::vector<KeyFrame*> neighbor_keyframes =
@@ -322,7 +314,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
     neighbor_keyframe->n_BA_local_for_keyframe_ = keyframe->id_;
     if (!neighbor_keyframe->isBad()) {
       ided_local_keyframes[neighbor_keyframe] =
-          MatEigenConverter::MatToMatrix_7_1(neighbor_keyframe->GetPose());
+          MatEigenConverter::Matrix4dToMatrix_7_1(neighbor_keyframe->GetPose());
     }
   }
 
@@ -339,8 +331,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
       if (map_point) {
         if (!map_point->isBad()) {
           if (map_point->n_BA_local_for_keyframe_ != keyframe->id_) {
-            ided_local_map_points[map_point] =
-                MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
+            ided_local_map_points[map_point] = map_point->GetWorldPos();
             map_point->n_BA_local_for_keyframe_ = keyframe->id_;
           }
         }
@@ -364,7 +355,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
         keyframe_i->n_BA_fixed_for_keyframe_ = keyframe->id_;
         if (!keyframe_i->isBad()) {
           ided_fixed_keyframes[keyframe_i] =
-              MatEigenConverter::MatToMatrix_7_1(keyframe_i->GetPose());
+              MatEigenConverter::Matrix4dToMatrix_7_1(keyframe_i->GetPose());
         }
       }
     }  // for loop end of observations
@@ -514,14 +505,14 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
        it++) {
     KeyFrame* keyframe = it->first;
     Eigen::Matrix<double, 7, 1> Tcw = it->second;
-    cv::Mat pose = MatEigenConverter::Matrix_7_1_ToMat(Tcw);
+    Eigen::Matrix4d pose = MatEigenConverter::Matrix_7_1_ToMatrix4d(Tcw);
     keyframe->SetPose(pose);
   }
   // MapPoints
   for (auto it = ided_local_map_points.begin();
        it != ided_local_map_points.end(); it++) {
     MapPoint* map_point = it->first;
-    map_point->SetWorldPos(MatEigenConverter::Vector3dToMat(it->second));
+    map_point->SetWorldPos(it->second);
     map_point->UpdateNormalAndDepth();
   }
 }
@@ -539,15 +530,11 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
   Eigen::Matrix3d K2 = MatEigenConverter::MatToMatrix3d(keyframe_2->K_);
 
   // Camera poses
-  Eigen::Matrix3d R1cw =
-      MatEigenConverter::MatToMatrix3d(keyframe_1->GetRotation());
-  Eigen::Vector3d t1cw =
-      MatEigenConverter::MatToVector3d(keyframe_1->GetTranslation());
+  Eigen::Matrix3d R1cw = keyframe_1->GetRotation();
+  Eigen::Vector3d t1cw = keyframe_1->GetTranslation();
 
-  Eigen::Matrix3d R2cw =
-      MatEigenConverter::MatToMatrix3d(keyframe_2->GetRotation());
-  Eigen::Vector3d t2cw =
-      MatEigenConverter::MatToVector3d(keyframe_2->GetTranslation());
+  Eigen::Matrix3d R2cw = keyframe_2->GetRotation();
+  Eigen::Vector3d t2cw = keyframe_2->GetTranslation();
 
   const int N = matches12.size();
   const std::vector<MapPoint*> map_points_1 = keyframe_1->GetMapPointMatches();
@@ -588,8 +575,7 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
             keyframe_1->inv_level_sigma2s_[keypoint_1.octave] *
             Eigen::Matrix2d::Identity();
         // Project map point in keyframe_2 to keyframe_1
-        Eigen::Vector3d P3D2w =
-            MatEigenConverter::MatToVector3d(map_point_2->GetWorldPos());
+        Eigen::Vector3d P3D2w = map_point_2->GetWorldPos();
         Eigen::Vector3d P3D2c = R2cw * P3D2w + t2cw;
         // Create residual function, residual = obs1 - K1 * (sT12 * P3D2c),
         // sT12 -> do_inverse = false;
@@ -607,8 +593,7 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
             keyframe_2->inv_level_sigma2s_[keypoint_2.octave] *
             Eigen::Matrix2d::Identity();
         // Project map point in keyframe_1 to keyframe_2
-        Eigen::Vector3d P3D1w =
-            MatEigenConverter::MatToVector3d(map_point_1->GetWorldPos());
+        Eigen::Vector3d P3D1w = map_point_1->GetWorldPos();
         Eigen::Vector3d P3D1c = R1cw * P3D1w + t1cw;
         // Residual function, residual = obs2 - K2 * (sT12.inverse() * P3D1c)
         // sT21 = sT12.inverse() -> do_inverse = true;
@@ -698,16 +683,14 @@ void CeresOptimizer::OptimizeEssentialGraph(
     if (it != keyframes_corrected_sim3.end()) {
       Scws[id_i] = it->second;
     } else {
-      Eigen::Matrix3d Rcw =
-          MatEigenConverter::MatToMatrix3d(keyframe->GetRotation());
-      Eigen::Vector3d tcw =
-          MatEigenConverter::MatToVector3d(keyframe->GetTranslation());
+      Eigen::Matrix3d Rcw = keyframe->GetRotation();
+      Eigen::Vector3d tcw = keyframe->GetTranslation();
       Sim3 Siw(1.0, Rcw, tcw);
       Scws[id_i] = Siw;
     }
   }  // end of all_keyframes loop
 
-  std::set<std::pair<long unsigned int, long unsigned int> > inserted_edges;
+  std::set<std::pair<long unsigned int, long unsigned int>> inserted_edges;
 
   ceres::Problem problem;
   ceres::LocalParameterization* quaternion_local_parameterization =
@@ -736,13 +719,11 @@ void CeresOptimizer::OptimizeEssentialGraph(
       const Sim3 Sji = Sjw * Swi;
 
       ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji);
-      problem.AddResidualBlock(cost_function, nullptr,
-                               Scws[id_j].translation().data(),
-                               Scws[id_j].rotation().coeffs().data(),
-                               &(Scws[id_j].scale()),
-                               Scws[id_i].translation().data(),
-                               Scws[id_i].rotation().coeffs().data(),
-                               &Scws[id_i].scale());
+      problem.AddResidualBlock(
+          cost_function, nullptr, Scws[id_j].translation().data(),
+          Scws[id_j].rotation().coeffs().data(), &(Scws[id_j].scale()),
+          Scws[id_i].translation().data(),
+          Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
 
       problem.SetParameterization(Scws[id_j].rotation().coeffs().data(),
                                   quaternion_local_parameterization);
@@ -788,13 +769,11 @@ void CeresOptimizer::OptimizeEssentialGraph(
       Sim3 Sji = Sjw * Swi;
 
       ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji);
-      problem.AddResidualBlock(cost_function, nullptr,
-                               Scws[id_j].translation().data(),
-                               Scws[id_j].rotation().coeffs().data(),
-                               &(Scws[id_j].scale()),
-                               Scws[id_i].translation().data(),
-                               Scws[id_i].rotation().coeffs().data(),
-                               &Scws[id_i].scale());
+      problem.AddResidualBlock(
+          cost_function, nullptr, Scws[id_j].translation().data(),
+          Scws[id_j].rotation().coeffs().data(), &(Scws[id_j].scale()),
+          Scws[id_i].translation().data(),
+          Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
 
       problem.SetParameterization(Scws[id_j].rotation().coeffs().data(),
                                   quaternion_local_parameterization);
@@ -822,17 +801,19 @@ void CeresOptimizer::OptimizeEssentialGraph(
         }
         Sim3 Sli = Slw * Swi;
 
-        ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sli);
-        problem.AddResidualBlock(cost_function, nullptr,
-                                 Scws[loop_keyframe->id_].translation().data(),
-                                 Scws[loop_keyframe->id_].rotation().coeffs().data(),
-                                 &(Scws[loop_keyframe->id_].scale()),
-                                 Scws[id_i].translation().data(),
-                                 Scws[id_i].rotation().coeffs().data(),
-                                 &Scws[id_i].scale());
+        ceres::CostFunction* cost_function =
+            EssentialGraphErrorTerm::Create(Sli);
+        problem.AddResidualBlock(
+            cost_function, nullptr,
+            Scws[loop_keyframe->id_].translation().data(),
+            Scws[loop_keyframe->id_].rotation().coeffs().data(),
+            &(Scws[loop_keyframe->id_].scale()),
+            Scws[id_i].translation().data(),
+            Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
 
-        problem.SetParameterization(Scws[loop_keyframe->id_].rotation().coeffs().data(),
-                                    quaternion_local_parameterization);
+        problem.SetParameterization(
+            Scws[loop_keyframe->id_].rotation().coeffs().data(),
+            quaternion_local_parameterization);
         problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
                                     quaternion_local_parameterization);
       }
@@ -862,17 +843,17 @@ void CeresOptimizer::OptimizeEssentialGraph(
 
         Sim3 Sni = Snw * Swi;
 
-        ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sni);
-        problem.AddResidualBlock(cost_function, nullptr,
-                                 Scws[keyframe_n->id_].translation().data(),
-                                 Scws[keyframe_n->id_].rotation().coeffs().data(),
-                                 &(Scws[keyframe_n->id_].scale()),
-                                 Scws[id_i].translation().data(),
-                                 Scws[id_i].rotation().coeffs().data(),
-                                 &Scws[id_i].scale());
+        ceres::CostFunction* cost_function =
+            EssentialGraphErrorTerm::Create(Sni);
+        problem.AddResidualBlock(
+            cost_function, nullptr, Scws[keyframe_n->id_].translation().data(),
+            Scws[keyframe_n->id_].rotation().coeffs().data(),
+            &(Scws[keyframe_n->id_].scale()), Scws[id_i].translation().data(),
+            Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
 
-        problem.SetParameterization(Scws[keyframe_n->id_].rotation().coeffs().data(),
-                                    quaternion_local_parameterization);
+        problem.SetParameterization(
+            Scws[keyframe_n->id_].rotation().coeffs().data(),
+            quaternion_local_parameterization);
         problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
                                     quaternion_local_parameterization);
       }
@@ -890,11 +871,11 @@ void CeresOptimizer::OptimizeEssentialGraph(
     Eigen::Matrix3d R = Scws[id_i].rotation().toRotationMatrix();
     Eigen::Vector3d t = Scws[id_i].translation();
     double s = Scws[id_i].scale();
-    t = (1./s) * t;
+    t = (1. / s) * t;
     Eigen::Matrix4d Tiw = Eigen::Matrix4d::Identity();
     Tiw.block<3, 3>(0, 0) = R;
     Tiw.block<3, 1>(0, 3) = t;
-    keyframe->SetPose(MatEigenConverter::Matrix4dToMat(Tiw));
+    keyframe->SetPose(Tiw);
   }
   // Correct points. Transform to "non-optimized" reference keyframe pose and
   // transform back with optimized pose
@@ -912,15 +893,14 @@ void CeresOptimizer::OptimizeEssentialGraph(
     }
     Sim3 Srw = Scws[id_r];
     Sim3 corrected_Swr = corrected_Swcs[id_r];
-    Eigen::Vector3d P3Dw =
-        MatEigenConverter::MatToVector3d(map_point->GetWorldPos());
+    Eigen::Vector3d P3Dw = map_point->GetWorldPos();
     Eigen::Vector3d P3Dc =
         Srw.scale() * (Srw.rotation() * P3Dw) + Srw.translation();
     Eigen::Vector3d corrected_P3Dw =
         corrected_Swr.scale() * (corrected_Swr.rotation() * P3Dc) +
         corrected_Swr.translation();
 
-    map_point->SetWorldPos(MatEigenConverter::Vector3dToMat(corrected_P3Dw));
+    map_point->SetWorldPos(corrected_P3Dw);
     map_point->UpdateNormalAndDepth();
   }
 }
