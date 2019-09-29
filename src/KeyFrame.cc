@@ -30,7 +30,7 @@
 
 #include "KeyFrame.h"
 #include <mutex>
-#include "Converter.h"
+#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 
 namespace ORB_SLAM2 {
@@ -107,7 +107,7 @@ KeyFrame::KeyFrame(Frame& frame, Map* map, KeyFrameDatabase* keyframe_database)
 void KeyFrame::ComputeBoW() {
   if (bow_vector_.empty() || feature_vector_.empty()) {
     vector<cv::Mat> current_descriptors =
-        Converter::toDescriptorVector(descriptors_);
+        MatEigenConverter::toDescriptorVector(descriptors_);
     // Feature vector associate features with nodes in the 4th level (from
     // leaves up) We assume the vocabulary tree has 6 levels, change the 4
     // otherwise

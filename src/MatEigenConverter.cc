@@ -89,3 +89,23 @@ cv::Mat MatEigenConverter::Matrix_7_1_ToMat(
   cv::Mat pose = Matrix4dToMat(_pose);
   return pose.clone();
 }
+
+cv::Mat MatEigenConverter::Sim3ToMat(const Sim3& sim) {
+  Eigen::Matrix3d R = sim.rotation().toRotationMatrix();
+  Eigen::Vector3d t = sim.translation();
+  double s = sim.scale();
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+  T.block<3, 3>(0, 0) = s * R;
+  T.block<3, 1>(0, 3) = t;
+  return Matrix4dToMat(T);
+}
+
+std::vector<cv::Mat> MatEigenConverter::toDescriptorVector(
+    const cv::Mat& Descriptors) {
+  std::vector<cv::Mat> vDesc;
+  vDesc.reserve(Descriptors.rows);
+  for (int j = 0; j < Descriptors.rows; j++)
+    vDesc.push_back(Descriptors.row(j));
+
+  return vDesc;
+}

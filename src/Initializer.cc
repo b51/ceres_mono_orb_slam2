@@ -34,7 +34,6 @@
 
 #include "MatEigenConverter.h"
 #include "ORBmatcher.h"
-#include "Optimizer.h"
 
 #include <glog/logging.h>
 #include <thread>

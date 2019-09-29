@@ -730,7 +730,7 @@ int ORBmatcher::Fuse(KeyFrame* pKF, const vector<MapPoint*>& vpMapPoints,
   const float& fy = pKF->fy_;
   const float& cx = pKF->cx_;
   const float& cy = pKF->cy_;
-  const float& bf = pKF->bf_;
+  // const float& bf = pKF->bf_;
 
   cv::Mat Ow = pKF->GetCameraCenter();
 
@@ -761,7 +761,7 @@ int ORBmatcher::Fuse(KeyFrame* pKF, const vector<MapPoint*>& vpMapPoints,
     // Point must be inside the image
     if (!pKF->IsInImage(u, v)) continue;
 
-    const float ur = u - bf * invz;
+    // const float ur = u - bf * invz;
 
     const float maxDistance = pMP->GetMaxDistanceInvariance();
     const float minDistance = pMP->GetMinDistanceInvariance();

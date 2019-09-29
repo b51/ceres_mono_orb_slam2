@@ -282,6 +282,7 @@ class EssentialGraphErrorTerm {
     residuals[5] = Sij_.translation().template cast<T>()[0] - p_a_b[0];
     residuals[6] = Sij_.translation().template cast<T>()[1] - p_a_b[1];
     residuals[7] = Sij_.translation().template cast<T>()[2] - p_a_b[2];
+    return true;
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW

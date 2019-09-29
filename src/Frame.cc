@@ -33,7 +33,7 @@
 #include <glog/logging.h>
 #include <thread>
 
-#include "Converter.h"
+#include "MatEigenConverter.h"
 #include "ORBmatcher.h"
 
 namespace ORB_SLAM2 {
@@ -320,7 +320,7 @@ bool Frame::PosInGrid(const cv::KeyPoint& kp, int& posX, int& posY) {
 
 void Frame::ComputeBoW() {
   if (bow_vector_.empty()) {
-    vector<cv::Mat> vCurrentDesc = Converter::toDescriptorVector(descriptors_);
+    vector<cv::Mat> vCurrentDesc = MatEigenConverter::toDescriptorVector(descriptors_);
     orb_vocabulary_->transform(vCurrentDesc, bow_vector_, feature_vector_, 4);
   }
 }

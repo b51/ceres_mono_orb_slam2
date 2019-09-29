@@ -16,7 +16,7 @@
 #include <iomanip>
 #include <thread>
 
-#include "Converter.h"
+#include "MatEigenConverter.h"
 
 namespace ORB_SLAM2 {
 
@@ -211,12 +211,13 @@ void MonoORBSlam::SaveKeyFrameTrajectoryTUM(const string& filename) {
       continue;
     }
 
-    cv::Mat R = keyframe->GetRotation().t();
-    std::vector<float> q = Converter::toQuaternion(R);
+    Eigen::Matrix3d R =
+        MatEigenConverter::MatToMatrix3d(keyframe->GetRotation().t());
+    Eigen::Quaterniond q(R);
     cv::Mat t = keyframe->GetCameraCenter();
     f << setprecision(6) << keyframe->timestamp_ << setprecision(7) << " "
       << t.at<float>(0) << " " << t.at<float>(1) << " " << t.at<float>(2) << " "
-      << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+      << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << endl;
   }
   f.close();
   LOG(INFO) << "trajectory saved!";

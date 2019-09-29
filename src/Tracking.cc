@@ -44,7 +44,6 @@
 #include "ORBmatcher.h"
 
 #include "CeresOptimizer.h"
-#include "Optimizer.h"
 #include "PnPsolver.h"
 
 namespace ORB_SLAM2 {
@@ -155,7 +154,7 @@ void Tracking::SetViewer(Viewer* viewer) { viewer_ = viewer; }
 
 cv::Mat Tracking::GrabImageMonocular(const cv::Mat& img,
                                      const double& timestamp) {
-  static int frame_num = 0;
+  // static int frame_num = 0;
   img_gray_ = img;
 
   if (img_gray_.channels() == 3) {

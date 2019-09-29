@@ -47,6 +47,10 @@ class Sim3 {
 
   inline Eigen::Quaterniond& rotation() { return q_; }
 
+  inline Eigen::Vector3d map(const Eigen::Vector3d& xyz) const {
+    return s_ * (q_ * xyz) + t_;
+  }
+
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  private:

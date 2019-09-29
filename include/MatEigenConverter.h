@@ -16,8 +16,12 @@
 #include <iostream>
 #include <opencv/cv.hpp>
 
+#include "LoopClosing.h"
+
 class MatEigenConverter {
  public:
+  static std::vector<cv::Mat> toDescriptorVector(const cv::Mat& Descriptors);
+
   // Transpose
   static Eigen::Matrix4d MatToMatrix4d(const cv::Mat& T);
   static cv::Mat Matrix4dToMat(const Eigen::Matrix4d& T);
@@ -33,6 +37,9 @@ class MatEigenConverter {
   // Matrix_7_1
   static Eigen::Matrix<double, 7, 1> MatToMatrix_7_1(const cv::Mat& pose);
   static cv::Mat Matrix_7_1_ToMat(const Eigen::Matrix<double, 7, 1>& Tcw_7_1);
+
+  // Sim3
+  static cv::Mat Sim3ToMat(const Sim3& sim);
 };
 
 #endif

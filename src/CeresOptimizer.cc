@@ -774,7 +774,7 @@ void CeresOptimizer::OptimizeEssentialGraph(
     }
     KeyFrame* parent_keyframe = keyframe->GetParent();
     if (parent_keyframe) {
-      int id_j = parent_keyframe->id_;
+      long unsigned int id_j = parent_keyframe->id_;
 
       Sim3 Sjw;
 
@@ -904,7 +904,7 @@ void CeresOptimizer::OptimizeEssentialGraph(
     if (map_point->isBad()) continue;
 
     int id_r;
-    if (map_point->corrected_by_keyframe_ = current_keyframe->id_) {
+    if (map_point->corrected_by_keyframe_ == current_keyframe->id_) {
       id_r = map_point->corrected_reference_;
     } else {
       KeyFrame* reference_keyframe = map_point->GetReferenceKeyFrame();

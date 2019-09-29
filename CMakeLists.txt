@@ -50,12 +50,10 @@ add_library(${PROJECT_NAME} SHARED
   src/ORBextractor.cc
   src/ORBmatcher.cc
   src/FrameDrawer.cc
-  src/Converter.cc
   src/MapPoint.cc
   src/KeyFrame.cc
   src/Map.cc
   src/MapDrawer.cc
-  src/Optimizer.cc
   src/CeresOptimizer.cc
   src/PnPsolver.cc
   src/Frame.cc
@@ -74,7 +72,6 @@ target_link_libraries(${PROJECT_NAME}
   ${Pangolin_LIBRARIES}
   ${CERES_LIBRARIES}
   ${PROJECT_SOURCE_DIR}/lib/DBoW2/lib/libDBoW2.so
-  ${PROJECT_SOURCE_DIR}/lib/g2o/lib/libg2o.so
   glog
 )
 

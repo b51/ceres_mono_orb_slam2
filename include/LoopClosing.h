@@ -42,7 +42,6 @@
 
 #include <mutex>
 #include <thread>
-#include "lib/g2o/g2o/types/types_seven_dof_expmap.h"
 
 namespace ORB_SLAM2 {
 
@@ -53,15 +52,13 @@ class KeyFrameDatabase;
 class LoopClosing {
  public:
   typedef std::pair<std::set<KeyFrame*>, int> ConsistentGroup;
-  typedef std::map<
-      KeyFrame*, g2o::Sim3, std::less<KeyFrame*>,
-      Eigen::aligned_allocator<std::pair<const KeyFrame*, g2o::Sim3> > >
-      KeyFrameAndPose;
 
   typedef std::map<
       KeyFrame*, Sim3, std::less<KeyFrame*>,
       Eigen::aligned_allocator<std::pair<const KeyFrame*, Sim3> > >
       KeyFrameAndSim3;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  public:
   LoopClosing(Map* map, KeyFrameDatabase* keyframe_database,
@@ -140,7 +137,7 @@ class LoopClosing {
   std::vector<MapPoint*> current_matched_map_points_;
   std::vector<MapPoint*> loop_map_points_;
   cv::Mat Scw_;
-  g2o::Sim3 g2oScw_;
+  Sim3 sim3_Scw_;
 
   long unsigned int last_loop_keyframe_id_;
 
@@ -154,7 +151,7 @@ class LoopClosing {
   // Fix scale in the stereo/RGB-D case
   bool is_fix_scale_;
 
-  bool full_BA_index_;
+  int full_BA_index_;
 };
 }  // namespace ORB_SLAM2
 
