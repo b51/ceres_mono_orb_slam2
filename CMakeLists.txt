@@ -17,16 +17,16 @@ else(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif(CMAKE_BUILD_TYPE STREQUAL "Release")
 #########################################################################
 
-find_package(catkin REQUIRED)
+#find_package(catkin REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(Ceres REQUIRED)
 
-catkin_package(
-  INCLUDE_DIRS include
-  #CATKIN_DEPENDS
-)
+#catkin_package(
+#  INCLUDE_DIRS include
+#  #CATKIN_DEPENDS
+#)
 
 ###########
 ## Build ##
@@ -37,7 +37,7 @@ catkin_package(
 include_directories(
   include
   ${PROJECT_SOURCE_DIR}
-  ${catkin_INCLUDE_DIRS}
+  #${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
   ${Pangolin_INCLUDE_DIRS}
 )
@@ -66,7 +66,7 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 target_link_libraries(${PROJECT_NAME}
-  ${catkin_LIBRARIES}
+  #${catkin_LIBRARIES}
   ${OpenCV_LIBS}
   ${EIGEN3_LIBS}
   ${Pangolin_LIBRARIES}

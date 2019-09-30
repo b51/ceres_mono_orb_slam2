@@ -8,33 +8,20 @@
 5. Has some bugs and may fix in the future
 
 ## Usage
-**Install catkin tools**
-```bash
-$ sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu `lsb_release -sc` main" > /etc/apt/sources.list.d/ros-latest.list'
-$ wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
-$ sudo apt update
-$ sudo apt install python-catkin-tools
-
-$ sudo apt install python-catkin-pkg
-$ cd workspace/src
-$ git clone https://github.com/ros/catkin.git
-$ pip install catkin_pkg
-```
-
 **Build**
 ```bash
-$ cd workspace/src
 $ git clone https://github.com/b51/ceres_mono_orb_slam2.git
 $ cd ceres_mono_orb_slam2
-$ wget https://raw.githubusercontent.com/raulmur/ORB_SLAM2/master/Vocabulary/ORBvoc.txt.tar.gz
-$ tar zxvf ORBvoc.txt.tar.gz
-$ catkin build ceres_mono_orb_slam2
+$ mkdir build && cd build
+$ cmake .. && make -j4
 ```
 
 **Run**
 ```bash
-Download datasets from links below
-$ cd workspace/devel/lib/ceres_mono_orb_slam2
+$ cd ceres_mono_orb_slam2
+$ wget https://raw.githubusercontent.com/raulmur/ORB_SLAM2/master/Vocabulary/ORBvoc.txt.tar.gz
+$ tar zxvf ORBvoc.txt.tar.gz
+$ cd build
 $ ./mono_slam --voc path/to/ORBvoc.txt --config path/to/configs/config.yaml --images path/to/rgbd_dataset_freiburg2_desk
 ```
 
