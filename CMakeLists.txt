@@ -73,6 +73,7 @@ target_link_libraries(${PROJECT_NAME}
   ${CERES_LIBRARIES}
   ${PROJECT_SOURCE_DIR}/lib/DBoW2/lib/libDBoW2.so
   glog
+  gflags
 )
 
 add_executable(mono_slam

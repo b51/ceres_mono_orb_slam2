@@ -9,15 +9,20 @@
  *
  ************************************************************************/
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <iostream>
 
 #include "MonoORBSlam.h"
 
+DEFINE_string(voc, "vocabulary/ORBvoc.txt", "Path to ORB vocabulary");
+DEFINE_string(config, "configs/TUM2.yaml", "Path to camera intrinsics");
+DEFINE_string(images, "rgbd_dataset_freiburg2_desk", "Path to images folder");
+
 void LoadImages(const string& strFile, vector<string>& vstrImageFilenames,
                 vector<double>& vTimestamps) {
-  ifstream f;
-  f.open(strFile.c_str());
+  ifstream f(strFile.c_str());
+  if (!f.good()) LOG(FATAL) << strFile << " not exists";
 
   // skip first three lines
   string s0;
@@ -43,21 +48,22 @@ void LoadImages(const string& strFile, vector<string>& vstrImageFilenames,
 
 int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
+  google::ParseCommandLineFlags(&argc, &argv, true);
 
   FLAGS_minloglevel = google::INFO;
   FLAGS_logtostderr = true;
   FLAGS_colorlogtostderr = true;
 
-  if (argc < 2)
-    LOG(FATAL) << argv[0] << " config.yaml imgs_dir";
+  LOG(WARNING) << "Usage: " << argv[0]
+               << " --voc ORBvoc.txt --config config.yaml --images imgs_dir";
   std::vector<std::string> string_image_filenames;
   std::vector<double> timestamps;
-  std::string string_file = std::string(argv[3]) + "/rgb.txt";
+  std::string string_file = std::string(FLAGS_images) + "/rgb.txt";
   LoadImages(string_file, string_image_filenames, timestamps);
 
   int n_images = string_image_filenames.size();
 
-  ORB_SLAM2::MonoORBSlam slam(argv[1], argv[2], true);
+  ORB_SLAM2::MonoORBSlam slam(FLAGS_voc, FLAGS_config, true);
 
   vector<float> times_track;
   times_track.resize(n_images);
@@ -68,13 +74,14 @@ int main(int argc, char* argv[]) {
 
   cv::Mat img;
   for (int i = 0; i < n_images; i++) {
-    img = cv::imread(std::string(argv[3]) + "/" + string_image_filenames[i],
-                     CV_LOAD_IMAGE_UNCHANGED);
+    img =
+        cv::imread(std::string(FLAGS_images) + "/" + string_image_filenames[i],
+                   CV_LOAD_IMAGE_UNCHANGED);
     double tframe = timestamps[i];
 
     if (img.empty()) {
-      LOG(FATAL) << "Failed to load image at: " << std::string(argv[3]) << "/"
-                 << string_image_filenames[i];
+      LOG(FATAL) << "Failed to load image at: " << std::string(FLAGS_images)
+                 << "/" << string_image_filenames[i];
     }
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
@@ -98,8 +105,7 @@ int main(int argc, char* argv[]) {
     if (ttrack < T) {
       usleep((T - ttrack) * 1e6);
     }
-    if (i == n_images-1)
-      cv::waitKey(0);
+    // if (i == n_images - 1) cv::waitKey(0);
   }
 
   slam.Shutdown();

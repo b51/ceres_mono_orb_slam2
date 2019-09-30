@@ -1,3 +1,54 @@
+# Mono Camera ORB-SLAM2 with ceres solver optimizer
+
+## What this repository for?
+1. Only for mono camera slam
+2. Remove g2o from ORB-SLAM2 and use ceres solver instead to get rid of annoying warnings
+3. Use Eigen::Matrix instead of cv::Mat for matrix calculation
+4. Tested on rgbd_dataset_freiburg2_desk and rgbd_dataset_freiburg2_360_kidnap
+5. Has some bugs and may fix in the future
+
+## Usage
+**Install catkin tools**
+```bash
+$ sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu `lsb_release -sc` main" > /etc/apt/sources.list.d/ros-latest.list'
+$ wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
+$ sudo apt update
+$ sudo apt install python-catkin-tools
+
+$ sudo apt install python-catkin-pkg
+$ cd workspace/src
+$ git clone https://github.com/ros/catkin.git
+$ pip install catkin_pkg
+```
+
+**Build**
+```bash
+$ cd workspace/src
+$ git clone https://github.com/b51/ceres_mono_orb_slam2.git
+$ cd ceres_mono_orb_slam2
+$ wget https://raw.githubusercontent.com/raulmur/ORB_SLAM2/master/Vocabulary/ORBvoc.txt.tar.gz
+$ tar zxvf ORBvoc.txt.tar.gz
+$ catkin build ceres_mono_orb_slam2
+```
+
+**Run**
+```bash
+Download datasets from links below
+$ cd workspace/devel/lib/ceres_mono_orb_slam2
+$ ./mono_slam --voc path/to/ORBvoc.txt --config path/to/configs/config.yaml --images path/to/rgbd_dataset_freiburg2_desk
+```
+
+## TODO
+  - [X] Sim3 Optimizer to ceres
+  - [X] g2oSim3 to be remove
+  - [X] Totally remove g2o to get rid of the tons annoying Warnings
+  - [X] cv::Mat for matrix to be remove
+  - [ ] Fix CeresOptimizer, sometimes get "Matrix not positive definite" warning
+  - [ ] Fix Relocalization, sometimes may get stuck
+  - [ ] EssentialGraph in CeresOptimizer need to review again
+  - [ ] Reconstruct to make code modular, at least make feature matcher as an independent module
+  - [ ] Add IMU data to get scale information
+
 # ORB-SLAM2
 **Authors:** [Raul Mur-Artal](http://webdiis.unizar.es/~raulmur/), [Juan D. Tardos](http://webdiis.unizar.es/~jdtardos/), [J. M. M. Montiel](http://webdiis.unizar.es/~josemari/) and [Dorian Galvez-Lopez](http://doriangalvez.com/) ([DBoW2](https://github.com/dorian3d/DBoW2))
 

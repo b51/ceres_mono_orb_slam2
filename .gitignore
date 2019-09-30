@@ -83,3 +83,4 @@ lib64/
 *.swp
 cscope.*
 tags
+vocabulary/ORBvoc.txt

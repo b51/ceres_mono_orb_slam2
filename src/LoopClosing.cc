@@ -602,11 +602,9 @@ void LoopClosing::CorrectLoop() {
   }
 
   // Optimize graph
-  LOG(ERROR) << " Ceres OptimizeEssentialGraph start";
   CeresOptimizer::OptimizeEssentialGraph(
       map_, matched_keyframe_, current_keyframe_, non_corrected_sim3,
       corrected_sim3, loop_connections, is_fix_scale_);
-  LOG(ERROR) << " Ceres OptimizeEssentialGraph end";
 
   map_->InformNewBigChange();
 

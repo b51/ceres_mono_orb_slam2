@@ -29,6 +29,8 @@ MonoORBSlam::MonoORBSlam(const string& voc_file,
       << "ORB-SLAM2 Copyright (C) 2014-2016 Raul Mur-Artal, University of "
          "Zaragoza."
       << std::endl
+      << "ceres_mono_orb_slam2 Copyright (C) 2019 b51live"
+      << std::endl
       << "This program comes with ABSOLUTELY NO WARRANTY;" << std::endl
       << "This is free software, and you are welcome to redistribute it"
       << std::endl

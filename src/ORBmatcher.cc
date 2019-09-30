@@ -1170,12 +1170,10 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
   const Eigen::Matrix3d Rcw = CurrentFrame.Tcw_.block<3, 3>(0, 0);
   const Eigen::Vector3d tcw = CurrentFrame.Tcw_.block<3, 1>(0, 3);
 
-  const Eigen::Vector3d twc = -Rcw.transpose() * tcw;
-
-  const Eigen::Matrix3d Rlw = LastFrame.Tcw_.block<3, 3>(0, 0);
-  const Eigen::Vector3d tlw = LastFrame.Tcw_.block<3, 1>(0, 3);
-
-  const Eigen::Vector3d tlc = Rlw * twc + tlw;
+  // const Eigen::Vector3d twc = -Rcw.transpose() * tcw;
+  // const Eigen::Matrix3d Rlw = LastFrame.Tcw_.block<3, 3>(0, 0);
+  // const Eigen::Vector3d tlw = LastFrame.Tcw_.block<3, 1>(0, 3);
+  // const Eigen::Vector3d tlc = Rlw * twc + tlw;
 
   for (int i = 0; i < LastFrame.N_; i++) {
     MapPoint* pMP = LastFrame.map_points_[i];

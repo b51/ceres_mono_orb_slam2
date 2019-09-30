@@ -10,14 +10,5 @@
   <license>GPLv3</license>
 
   <buildtool_depend>catkin</buildtool_depend>
-  <build_depend>git</build_depend>
-  <build_depend>google-mock</build_depend>
-  <build_depend>protobuf-dev</build_depend>
-  <build_depend>python-sphinx</build_depend>
 
-  <depend>roscpp</depend>
-  <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>tf2_ros</depend>
-  <depend>cv_bridge</depend>
 </package>
