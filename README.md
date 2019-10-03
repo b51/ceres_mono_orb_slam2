@@ -8,6 +8,14 @@
 5. Has some bugs and may fix in the future
 
 ## Usage
+**PreInstall**
+
+[Install ceres_solver](http://www.ceres-solver.org/installation.html)
+
+[Install Pangolin](https://github.com/stevenlovegrove/Pangolin)
+
+[Download Datasets](#Monocular)
+
 **Build**
 ```bash
 $ git clone https://github.com/b51/ceres_mono_orb_slam2.git
@@ -132,7 +140,7 @@ chmod +x build.sh
 
 This will create **libORB_SLAM2.so**  at *lib* folder and the executables **mono_tum**, **mono_kitti**, **rgbd_tum**, **stereo_kitti**, **mono_euroc** and **stereo_euroc** in *Examples* folder.
 
-# 4. Monocular Examples
+# <a name='Monocular'></a>4. Monocular Examples
 
 ## TUM Dataset
 
