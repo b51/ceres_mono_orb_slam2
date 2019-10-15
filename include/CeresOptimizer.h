@@ -341,9 +341,10 @@ class CeresOptimizer {
   void static LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
                                     Map* map);
 
-  bool static CheckOutliers(Eigen::Matrix3d K, Eigen::Vector2d& observation,
-                            Eigen::Vector3d& world_pose, Eigen::Vector3d& tcw,
-                            Eigen::Quaterniond& qcw, double thres);
+  bool static CheckOutlier(Eigen::Matrix3d K, Eigen::Vector2d& observation,
+                           float inv_sigma, Eigen::Vector3d& world_pose,
+                           Eigen::Vector3d& tcw, Eigen::Quaterniond& qcw,
+                           double thres);
 
   int static CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
                            Eigen::Quaterniond& qcw);

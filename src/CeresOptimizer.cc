@@ -13,6 +13,7 @@
 
 #include <ceres/local_parameterization.h>
 #include <ceres/solver.h>
+#include <unordered_map>
 
 #include "MatEigenConverter.h"
 
@@ -180,15 +181,15 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
   }
 }
 
-bool CeresOptimizer::CheckOutliers(Eigen::Matrix3d K,
-                                   Eigen::Vector2d& observation,
-                                   Eigen::Vector3d& world_pose,
-                                   Eigen::Vector3d& tcw,
-                                   Eigen::Quaterniond& qcw, double thres) {
+bool CeresOptimizer::CheckOutlier(Eigen::Matrix3d K,
+                                  Eigen::Vector2d& observation, float inv_sigma,
+                                  Eigen::Vector3d& world_pose,
+                                  Eigen::Vector3d& tcw, Eigen::Quaterniond& qcw,
+                                  double thres) {
   Eigen::Vector3d pixel_pose = K * (qcw * world_pose + tcw);
   double error_u = observation[0] - pixel_pose[0] / pixel_pose[2];
   double error_v = observation[1] - pixel_pose[1] / pixel_pose[2];
-  double error = error_u * error_u + error_v * error_v;
+  double error = (error_u * error_u + error_v * error_v) * inv_sigma;
   if (error > thres) {
     return true;
   } else {
@@ -209,9 +210,11 @@ int CeresOptimizer::CheckOutliers(Frame* frame, Eigen::Vector3d& tcw,
       cv::KeyPoint& undistort_keypoint = frame->undistort_keypoints_[i];
       Eigen::Vector2d observation(undistort_keypoint.pt.x,
                                   undistort_keypoint.pt.y);
+      float inv_sigma = frame->inv_level_sigma2s_[undistort_keypoint.octave];
       double thres = 5.991;
 
-      if (CheckOutliers(K, observation, world_pose, tcw, qcw, thres)) {
+      if (CheckOutlier(K, observation, inv_sigma, world_pose, tcw, qcw,
+                       thres)) {
         frame->is_outliers_[i] = true;
         n_bad++;
       } else {
@@ -299,7 +302,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
                                            Map* map) {
   // Local KeyFrames: First Breadth Search from Current Keyframe
   // ided keyframe for pose recovery after optimize
-  std::map<KeyFrame*, Eigen::Matrix<double, 7, 1>> ided_local_keyframes;
+  std::unordered_map<KeyFrame*, Eigen::Matrix<double, 7, 1>> ided_local_keyframes;
   ided_local_keyframes[keyframe] =
       MatEigenConverter::Matrix4dToMatrix_7_1(keyframe->GetPose());
   keyframe->n_BA_local_for_keyframe_ = keyframe->id_;
@@ -361,22 +364,35 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
 
   // Setup optimizer
   ceres::Problem problem;
-  ceres::LossFunction* loss_function = new ceres::HuberLoss(sqrt(5.991));
   ceres::LocalParameterization* quaternion_local_parameterization =
       new ceres::EigenQuaternionParameterization;
+
+  int optimize_count = 0;
+  std::vector<std::pair<KeyFrame*, MapPoint*>> to_erase;
+
+reoptimize:
+  ceres::ParameterBlockOrdering* ordering = nullptr;
+  ordering = new ceres::ParameterBlockOrdering;
+  ceres::LossFunction* loss_function = nullptr;
+  if (optimize_count == 0)
+    loss_function = new ceres::HuberLoss(sqrt(5.991));
 
   for (auto it = ided_local_map_points.begin();
        it != ided_local_map_points.end(); it++) {
     MapPoint* map_point = it->first;
-
     const std::map<KeyFrame*, size_t> observations =
         map_point->GetObservations();
 
     for (auto it_observation = observations.begin();
          it_observation != observations.end(); it_observation++) {
       KeyFrame* keyframe = it_observation->first;
-
       if (keyframe->isBad()) continue;
+
+      if (!to_erase.empty() and
+          std::find(to_erase.begin(), to_erase.end(),
+                    std::make_pair(keyframe, map_point)) != to_erase.end()) {
+        continue;
+      }
 
       // Get values
       const cv::KeyPoint& undistort_keypoint =
@@ -395,7 +411,13 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
       ceres::CostFunction* cost_function =
           PoseGraph3dErrorTerm::Create(K, observation, sqrt_information);
 
+      ordering->AddElementToGroup(it->second.data(), 0);
       if (ided_local_keyframes.find(keyframe) != ided_local_keyframes.end()) {
+        // points ordering 1
+        ordering->AddElementToGroup(
+            ided_local_keyframes[keyframe].block<3, 1>(0, 0).data(), 1);
+        ordering->AddElementToGroup(
+            ided_local_keyframes[keyframe].block<4, 1>(3, 0).data(), 1);
         // add residual block
         problem.AddResidualBlock(
             cost_function, loss_function,
@@ -416,6 +438,11 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
         }
       } else {
         if (ided_fixed_keyframes.find(keyframe) != ided_fixed_keyframes.end()) {
+          // add points ordering 1
+          ordering->AddElementToGroup(
+              ided_fixed_keyframes[keyframe].block<3, 1>(0, 0).data(), 1);
+          ordering->AddElementToGroup(
+              ided_fixed_keyframes[keyframe].block<4, 1>(3, 0).data(), 1);
           // add residual block
           problem.AddResidualBlock(
               cost_function, loss_function,
@@ -442,13 +469,17 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
     }
     options.callbacks.push_back(new StopFlagCallback(stop_flag));
   }
+  options.linear_solver_ordering.reset(ordering);
+  options.num_threads = 4;
   options.max_num_iterations = 100;
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+  options.use_explicit_schur_complement = true;
 
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
 
-  std::vector<pair<KeyFrame*, MapPoint*>> to_erase;
+  std::vector<std::pair<KeyFrame*, MapPoint*>> empty_to_erase;
+  to_erase.swap(empty_to_erase);
 
   for (auto it = ided_local_map_points.begin();
        it != ided_local_map_points.end(); it++) {
@@ -465,6 +496,7 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
           keyframe->undistort_keypoints_[it_observation->second];
       Eigen::Vector2d observation(undistort_keypoint.pt.x,
                                   undistort_keypoint.pt.y);
+      float inv_sigma = keyframe->inv_level_sigma2s_[undistort_keypoint.octave];
 
       // check is map point outlier in optimized keyframes
       if (ided_local_keyframes.find(keyframe) != ided_local_keyframes.end()) {
@@ -478,14 +510,20 @@ void CeresOptimizer::LocalBundleAdjustment(KeyFrame* keyframe, bool* stop_flag,
         K << keyframe->fx_, 0., keyframe->cx_, 0., keyframe->fy_, keyframe->cy_,
             0., 0., 1.;
 
-        bool is_outlier = CheckOutliers(
-            K, observation, ided_local_map_points[map_point], tcw, qcw, thres);
-        if (is_outlier) {
+        bool is_outlier =
+            CheckOutlier(K, observation, inv_sigma,
+                         ided_local_map_points[map_point], tcw, qcw, thres);
+        Eigen::Vector3d map_point_c = qcw * ided_local_map_points[map_point] + tcw;
+        if (is_outlier || map_point_c[2] <= 0) {
           to_erase.push_back(std::make_pair(keyframe, map_point));
         }
       }
     }  // end of observations for loop
   }    // end of ided_local_map_points for loop
+  if (optimize_count == 0) {
+    optimize_count++;
+    goto reoptimize;
+  }
 
   unique_lock<mutex> lock(map->mutex_map_update_);
   if (!to_erase.empty()) {
@@ -554,6 +592,9 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
   std::list<Eigen::Vector3d> P3D2c_list;
   std::list<Eigen::Vector2d> obs2_list;
   std::list<Eigen::Vector3d> P3D1c_list;
+  std::list<float> inv_sigma_1_list;
+  std::list<float> inv_sigma_2_list;
+
   for (int i = 0; i < N; i++) {
     if (!matches12[i]) continue;
 
@@ -569,9 +610,9 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
         // Get observations in keyframe_1's pixel coordinate
         const cv::KeyPoint& keypoint_1 = keyframe_1->undistort_keypoints_[i];
         Eigen::Vector2d obs1(keypoint_1.pt.x, keypoint_1.pt.y);
+        float inv_sigma_1 = keyframe_1->inv_level_sigma2s_[keypoint_1.octave];
         Eigen::Matrix2d invSigmaSquareInfo1 =
-            keyframe_1->inv_level_sigma2s_[keypoint_1.octave] *
-            Eigen::Matrix2d::Identity();
+            inv_sigma_1 * Eigen::Matrix2d::Identity();
         // Project map point in keyframe_2 to keyframe_1
         Eigen::Vector3d P3D2w = map_point_2->GetWorldPos();
         Eigen::Vector3d P3D2c = R2cw * P3D2w + t2cw;
@@ -587,9 +628,9 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
         // Get observations in keyframe_2's pixel coordinate
         const cv::KeyPoint& keypoint_2 = keyframe_2->undistort_keypoints_[i2];
         Eigen::Vector2d obs2(keypoint_2.pt.x, keypoint_2.pt.y);
+        float inv_sigma_2 = keyframe_2->inv_level_sigma2s_[keypoint_2.octave];
         Eigen::Matrix2d invSigmaSquareInfo2 =
-            keyframe_2->inv_level_sigma2s_[keypoint_2.octave] *
-            Eigen::Matrix2d::Identity();
+            inv_sigma_2 * Eigen::Matrix2d::Identity();
         // Project map point in keyframe_1 to keyframe_2
         Eigen::Vector3d P3D1w = map_point_1->GetWorldPos();
         Eigen::Vector3d P3D1c = R1cw * P3D1w + t1cw;
@@ -603,8 +644,10 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
                                     quaternion_local_parameterization);
         // push for outliers count
         obs1_list.emplace_back(obs1);
+        inv_sigma_1_list.emplace_back(inv_sigma_1);
         P3D2c_list.emplace_back(P3D2c);
         obs2_list.emplace_back(obs2);
+        inv_sigma_2_list.emplace_back(inv_sigma_2);
         P3D1c_list.emplace_back(P3D1c);
       }
     }
@@ -619,29 +662,30 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
     Eigen::Vector3d t12_for_check = _t12;
     Eigen::Quaterniond q12_for_check(sR12_for_check);
 
-    bool is_outlier_12 =
-        CheckOutliers(K1, obs1_list.front(), P3D2c_list.front(), t12_for_check,
-                      q12_for_check, deltaHuber * deltaHuber);
+    bool is_outlier_12 = CheckOutlier(
+        K1, obs1_list.front(), inv_sigma_1_list.front(), P3D2c_list.front(),
+        t12_for_check, q12_for_check, deltaHuber * deltaHuber);
 
     Eigen::Matrix3d sR21_for_check =
         (1.0 / _scale12) * _q12.conjugate().toRotationMatrix();
     Eigen::Vector3d t21_for_check = -(sR21_for_check * t12_for_check);
     Eigen::Quaterniond q21_for_check(sR21_for_check);
 
-    bool is_outlier_21 =
-        CheckOutliers(K2, obs2_list.front(), P3D1c_list.front(), t21_for_check,
-                      q21_for_check, deltaHuber * deltaHuber);
+    bool is_outlier_21 = CheckOutlier(
+        K2, obs2_list.front(), inv_sigma_2_list.front(), P3D1c_list.front(),
+        t21_for_check, q21_for_check, deltaHuber * deltaHuber);
 
     obs1_list.pop_front();
+    inv_sigma_1_list.pop_front();
     P3D2c_list.pop_front();
     obs2_list.pop_front();
+    inv_sigma_2_list.pop_front();
     P3D1c_list.pop_front();
 
     if (is_outlier_12 or is_outlier_21) n_bad++;
   }
 
-  LOG(INFO) << "n_correspondences: " << n_correspondences
-            << " n_bad: " << n_bad;
+  VLOG(4) << "n_correspondences: " << n_correspondences << " n_bad: " << n_bad;
 
   if (n_correspondences - n_bad < 10) return 0;
 
