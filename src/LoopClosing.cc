@@ -47,12 +47,12 @@ LoopClosing::LoopClosing(Map* map, KeyFrameDatabase* keyframe_database,
       map_(map),
       keyframe_database_(keyframe_database),
       orb_vocabulary_(orb_vocabulary),
-      matched_keyframe_(NULL),
+      matched_keyframe_(nullptr),
       last_loop_keyframe_id_(0),
       is_running_global_BA_(false),
       is_finished_global_BA_(true),
       is_stop_global_BA_(false),
-      thread_global_BA_(NULL),
+      thread_global_BA_(nullptr),
       is_fix_scale_(is_fix_scale),
       full_BA_index_(0) {
   covisibility_consistency_threshold_ = 3;
@@ -307,7 +307,7 @@ bool LoopClosing::ComputeSim3() {
       // all correspondences
       if (!Scm.isIdentity()) {
         std::vector<MapPoint*> map_point_matches(
-            map_point_matches_vector[i].size(), static_cast<MapPoint*>(NULL));
+            map_point_matches_vector[i].size(), static_cast<MapPoint*>(nullptr));
         for (size_t j = 0, jend = is_inliers.size(); j < jend; j++) {
           if (is_inliers[j])
             map_point_matches[j] = map_point_matches_vector[i][j];
@@ -642,7 +642,7 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap) {
     eig_Scw.block<3, 1>(0, 3) = Scw.translation();
 
     vector<MapPoint*> replace_map_points(loop_map_points_.size(),
-                                         static_cast<MapPoint*>(NULL));
+                                         static_cast<MapPoint*>(nullptr));
     matcher.Fuse(keyframe, eig_Scw, loop_map_points_, 4, replace_map_points);
 
     // Get Map Mutex

@@ -56,9 +56,9 @@ Tracking::Tracking(MonoORBSlam* mono_orb_slam, ORBVocabulary* vocabulary,
       do_vo_(false),
       orb_vocabulary_(vocabulary),
       keyframe_database_(keyframe_database),
-      initializer_(static_cast<Initializer*>(NULL)),
+      initializer_(static_cast<Initializer*>(nullptr)),
       mono_orb_slam_(mono_orb_slam),
-      viewer_(NULL),
+      viewer_(nullptr),
       frame_drawer_(frame_drawer),
       map_drawer_(map_drawer),
       map_(map),
@@ -182,11 +182,90 @@ Eigen::Matrix4d Tracking::GrabImageMonocular(const cv::Mat& img,
   return current_frame_.Tcw_;
 }
 
+bool Tracking::TrackingWithKnownMap() {
+  // Localization Mode: Local Mapping is deactivated
+  bool is_OK = false;
+  if (state_ == LOST) {
+      is_OK = Relocalization();
+  } else {
+    if (!do_vo_) {
+      // In last frame we tracked enough MapPoints in the map
+      if (!velocity_.isIdentity()) {
+        is_OK = TrackWithMotionModel();
+      } else {
+        is_OK = TrackReferenceKeyFrame();
+      }
+    } else {
+      // In last frame we tracked mainly "visual odometry" points.
+
+      // We compute two camera poses, one from motion model and one
+      // doing relocalization. If relocalization is sucessfull we choose
+      // that solution, otherwise we retain the "visual odometry"
+      // solution.
+      bool is_motion_model_OK = false;
+      bool is_reloc_OK = false;
+      vector<MapPoint*> motion_model_map_points;
+      vector<bool> is_motion_model_outliers;
+      Eigen::Matrix4d motion_model_Tcw;
+      if (!velocity_.isIdentity()) {
+        is_motion_model_OK = TrackWithMotionModel();
+        motion_model_map_points = current_frame_.map_points_;
+        is_motion_model_outliers = current_frame_.is_outliers_;
+        motion_model_Tcw = current_frame_.Tcw_;
+      }
+      is_reloc_OK = Relocalization();
+
+      if (is_motion_model_OK && !is_reloc_OK) {
+        current_frame_.SetPose(motion_model_Tcw);
+        current_frame_.map_points_ = motion_model_map_points;
+        current_frame_.is_outliers_ = is_motion_model_outliers;
+
+        if (do_vo_) {
+          for (int i = 0; i < current_frame_.N_; i++) {
+            if (current_frame_.map_points_[i] &&
+                !current_frame_.is_outliers_[i]) {
+              current_frame_.map_points_[i]->IncreaseFound();
+            }
+          }
+        }
+      } else if (is_reloc_OK) {
+        do_vo_ = false;
+      }
+      is_OK = is_reloc_OK || is_motion_model_OK;
+    }
+  }
+  return is_OK;
+}
+
+bool Tracking::Mapping() {
+  bool is_OK = false;
+  // Local Mapping is activated. This is the normal behaviour, unless
+  // you explicitly activate the "only tracking" mode.
+  if (state_ == OK) {
+    // Local Mapping might have changed some MapPoints tracked in last
+    // frame
+    CheckReplacedInLastFrame();
+
+    if (velocity_.isIdentity() ||
+        current_frame_.id_ < last_reloc_frame_id_ + 2) {
+      is_OK = TrackReferenceKeyFrame();
+    } else {
+      is_OK = TrackWithMotionModel();
+      if (!is_OK) {
+        is_OK = TrackReferenceKeyFrame();
+      }
+    }
+
+  } else {
+    is_OK = Relocalization();
+  }
+  return is_OK;
+}
+
 void Tracking::Track() {
   if (state_ == NO_IMAGES_YET) {
     state_ = NOT_INITIALIZED;
   }
-
   last_processed_state_ = state_;
 
   // Get Map Mutex -> Map cannot be changed
@@ -202,105 +281,29 @@ void Tracking::Track() {
   } else {
     // System is initialized. Track Frame.
     bool is_OK;
-
     // Initial camera pose estimation using motion model or relocalization (if
     // tracking is lost)
     if (!do_only_tracking_) {
-      // Local Mapping is activated. This is the normal behaviour, unless
-      // you explicitly activate the "only tracking" mode.
-
-      if (state_ == OK) {
-        // Local Mapping might have changed some MapPoints tracked in last frame
-        CheckReplacedInLastFrame();
-
-        if (velocity_.isIdentity() ||
-            current_frame_.id_ < last_reloc_frame_id_ + 2) {
-          is_OK = TrackReferenceKeyFrame();
-        } else {
-          is_OK = TrackWithMotionModel();
-          if (!is_OK) {
-            is_OK = TrackReferenceKeyFrame();
-          }
-        }
-      } else {
-        is_OK = Relocalization();
-      }
-    } else {
-      // Localization Mode: Local Mapping is deactivated
-      if (state_ == LOST) {
-        is_OK = Relocalization();
-      } else {
-        if (!do_vo_) {
-          // In last frame we tracked enough MapPoints in the map
-          if (!velocity_.isIdentity()) {
-            is_OK = TrackWithMotionModel();
-          } else {
-            is_OK = TrackReferenceKeyFrame();
-          }
-        } else {
-          // In last frame we tracked mainly "visual odometry" points.
-
-          // We compute two camera poses, one from motion model and one doing
-          // relocalization. If relocalization is sucessfull we choose that
-          // solution, otherwise we retain the "visual odometry" solution.
-
-          bool is_motion_model_OK = false;
-          bool is_reloc_OK = false;
-          vector<MapPoint*> motion_model_map_points;
-          vector<bool> is_motion_model_outliers;
-          Eigen::Matrix4d motion_model_Tcw;
-          if (!velocity_.isIdentity()) {
-            is_motion_model_OK = TrackWithMotionModel();
-            motion_model_map_points = current_frame_.map_points_;
-            is_motion_model_outliers = current_frame_.is_outliers_;
-            motion_model_Tcw = current_frame_.Tcw_;
-          }
-          is_reloc_OK = Relocalization();
-
-          if (is_motion_model_OK && !is_reloc_OK) {
-            current_frame_.SetPose(motion_model_Tcw);
-            current_frame_.map_points_ = motion_model_map_points;
-            current_frame_.is_outliers_ = is_motion_model_outliers;
-
-            if (do_vo_) {
-              for (int i = 0; i < current_frame_.N_; i++) {
-                if (current_frame_.map_points_[i] &&
-                    !current_frame_.is_outliers_[i]) {
-                  current_frame_.map_points_[i]->IncreaseFound();
-                }
-              }
-            }
-          } else if (is_reloc_OK) {
-            do_vo_ = false;
-          }
-
-          is_OK = is_reloc_OK || is_motion_model_OK;
-        }
-      }
-    }
-
-    current_frame_.reference_keyframe_ = reference_keyframe_;
-
-    // If we have an initial estimation of the camera pose and matching. Track
-    // the local map.
-    if (!do_only_tracking_) {
+      is_OK = Mapping();
+      current_frame_.reference_keyframe_ = reference_keyframe_;
+      // If we have an initial estimation of the camera pose and matching.
+      // Track the local map.
       if (is_OK) {
         is_OK = TrackLocalMap();
       }
     } else {
-      // do_vo_ true means that there are few matches to MapPoints in the map.
-      // We cannot retrieve a local map and therefore we do not perform
-      // TrackLocalMap(). Once the system relocalizes the camera we will use the
-      // local map again.
+      is_OK = TrackingWithKnownMap();
+      current_frame_.reference_keyframe_ = reference_keyframe_;
+      // do_vo_ true means that there are few matches to MapPoints in the
+      // map. We cannot retrieve a local map and therefore we do not perform
+      // TrackLocalMap(). Once the system relocalizes the camera we will use
+      // the local map again.
       if (is_OK && !do_vo_) {
         is_OK = TrackLocalMap();
       }
-    }
+    } // end of if (!do_only_tracking_)
 
-    if (is_OK)
-      state_ = OK;
-    else
-      state_ = LOST;
+    state_ = is_OK ? OK : LOST;
 
     // Update drawer
     frame_drawer_->Update(this);
@@ -325,7 +328,7 @@ void Tracking::Track() {
         if (map_point)
           if (map_point->Observations() < 1) {
             current_frame_.is_outliers_[i] = false;
-            current_frame_.map_points_[i] = static_cast<MapPoint*>(NULL);
+            current_frame_.map_points_[i] = static_cast<MapPoint*>(nullptr);
           }
       }
 
@@ -334,14 +337,14 @@ void Tracking::Track() {
         CreateNewKeyFrame();
       }
 
-      // We allow points with high innovation (considererd outliers by the Huber
-      // Function) pass to the new keyframe, so that bundle adjustment will
-      // finally decide if they are outliers or not. We don't want next frame to
-      // estimate its position with those points so we discard them in the
-      // frame.
+      // We allow points with high innovation (considererd outliers by the
+      // Huber Function) pass to the new keyframe, so that bundle adjustment
+      // will finally decide if they are outliers or not. We don't want next
+      // frame to estimate its position with those points so we discard them
+      // in the frame.
       for (int i = 0; i < current_frame_.N_; i++) {
         if (current_frame_.map_points_[i] && current_frame_.is_outliers_[i])
-          current_frame_.map_points_[i] = static_cast<MapPoint*>(NULL);
+          current_frame_.map_points_[i] = static_cast<MapPoint*>(nullptr);
       }
     }
 
@@ -403,7 +406,7 @@ void Tracking::MonocularInitialization() {
     // Try to initialize
     if ((int)current_frame_.keypoints_.size() <= 100) {
       delete initializer_;
-      initializer_ = static_cast<Initializer*>(NULL);
+      initializer_ = static_cast<Initializer*>(nullptr);
       std::fill(init_matches_.begin(), init_matches_.end(), -1);
       return;
     }
@@ -417,7 +420,7 @@ void Tracking::MonocularInitialization() {
     // Check if there are enough correspondences
     if (nmatches < 100) {
       delete initializer_;
-      initializer_ = static_cast<Initializer*>(NULL);
+      initializer_ = static_cast<Initializer*>(nullptr);
       return;
     }
 
@@ -590,7 +593,7 @@ bool Tracking::TrackReferenceKeyFrame() {
       if (current_frame_.is_outliers_[i]) {
         MapPoint* map_point = current_frame_.map_points_[i];
 
-        current_frame_.map_points_[i] = static_cast<MapPoint*>(NULL);
+        current_frame_.map_points_[i] = static_cast<MapPoint*>(nullptr);
         current_frame_.is_outliers_[i] = false;
         map_point->is_track_in_view_ = false;
         map_point->last_seen_frame_id_ = current_frame_.id_;
@@ -622,7 +625,7 @@ bool Tracking::TrackWithMotionModel() {
   current_frame_.SetPose(velocity_ * last_frame_.Tcw_);
 
   std::fill(current_frame_.map_points_.begin(),
-            current_frame_.map_points_.end(), static_cast<MapPoint*>(NULL));
+            current_frame_.map_points_.end(), static_cast<MapPoint*>(nullptr));
 
   // Project points seen in previous frame
   int th = 15;
@@ -631,7 +634,7 @@ bool Tracking::TrackWithMotionModel() {
   // If few matches, uses a wider window search
   if (nmatches < 20) {
     std::fill(current_frame_.map_points_.begin(),
-              current_frame_.map_points_.end(), static_cast<MapPoint*>(NULL));
+              current_frame_.map_points_.end(), static_cast<MapPoint*>(nullptr));
     nmatches = matcher.SearchByProjection(current_frame_, last_frame_, 2 * th);
   }
 
@@ -649,7 +652,7 @@ bool Tracking::TrackWithMotionModel() {
       if (current_frame_.is_outliers_[i]) {
         MapPoint* map_point = current_frame_.map_points_[i];
 
-        current_frame_.map_points_[i] = static_cast<MapPoint*>(NULL);
+        current_frame_.map_points_[i] = static_cast<MapPoint*>(nullptr);
         current_frame_.is_outliers_[i] = false;
         map_point->is_track_in_view_ = false;
         map_point->last_seen_frame_id_ = current_frame_.id_;
@@ -669,9 +672,9 @@ bool Tracking::TrackWithMotionModel() {
 
 bool Tracking::TrackLocalMap() {
   // LOG(WARNING) << "Track Local Map";
-  // We have an estimation of the camera pose and some map points tracked in the
-  // frame. We retrieve the local map and try to find matches to points in the
-  // local map.
+  // We have an estimation of the camera pose and some map points tracked in
+  // the frame. We retrieve the local map and try to find matches to points in
+  // the local map.
 
   UpdateLocalMap();
 
@@ -690,8 +693,9 @@ bool Tracking::TrackLocalMap() {
           if (current_frame_.map_points_[i]->Observations() > 0) {
             n_matches_inliers_++;
           }
-        } else
+        } else {
           n_matches_inliers_++;
+        }
       }
     }
   }
@@ -795,7 +799,7 @@ void Tracking::SearchLocalPoints() {
     MapPoint* map_point = *vit;
     if (map_point) {
       if (map_point->isBad()) {
-        *vit = static_cast<MapPoint*>(NULL);
+        *vit = static_cast<MapPoint*>(nullptr);
       } else {
         map_point->IncreaseVisible();
         map_point->last_seen_frame_id_ = current_frame_.id_;
@@ -882,7 +886,7 @@ void Tracking::UpdateLocalKeyFrames() {
              it != itend; it++)
           keyframeCounter[it->first]++;
       } else {
-        current_frame_.map_points_[i] = NULL;
+        current_frame_.map_points_[i] = nullptr;
       }
     }
   }
@@ -892,13 +896,13 @@ void Tracking::UpdateLocalKeyFrames() {
   }
 
   int max = 0;
-  KeyFrame* keyframe_max = static_cast<KeyFrame*>(NULL);
+  KeyFrame* keyframe_max = static_cast<KeyFrame*>(nullptr);
 
   local_keyframes_.clear();
   local_keyframes_.reserve(3 * keyframeCounter.size());
 
-  // All keyframes that observe a map point are included in the local map. Also
-  // check which keyframe shares most points
+  // All keyframes that observe a map point are included in the local map.
+  // Also check which keyframe shares most points
   for (map<KeyFrame*, int>::const_iterator it = keyframeCounter.begin(),
                                            itEnd = keyframeCounter.end();
        it != itEnd; it++) {
@@ -1064,7 +1068,7 @@ bool Tracking::Relocalization() {
             current_frame_.map_points_[j] = map_point_matches_vector[i][j];
             map_points_founded.insert(map_point_matches_vector[i][j]);
           } else
-            current_frame_.map_points_[j] = NULL;
+            current_frame_.map_points_[j] = nullptr;
         }
 
         int nGood = CeresOptimizer::PoseOptimization(&current_frame_);
@@ -1073,10 +1077,10 @@ bool Tracking::Relocalization() {
 
         for (int io = 0; io < current_frame_.N_; io++)
           if (current_frame_.is_outliers_[io])
-            current_frame_.map_points_[io] = static_cast<MapPoint*>(NULL);
+            current_frame_.map_points_[io] = static_cast<MapPoint*>(nullptr);
 
-        // If few inliers, search by projection in a coarse window and optimize
-        // again
+        // If few inliers, search by projection in a coarse window and
+        // optimize again
         if (nGood < 50) {
           int nadditional = matcher2.SearchByProjection(
               current_frame_, candidate_keyframes[i], map_points_founded, 10,
@@ -1085,9 +1089,9 @@ bool Tracking::Relocalization() {
           if (nadditional + nGood >= 50) {
             nGood = CeresOptimizer::PoseOptimization(&current_frame_);
 
-            // If many inliers but still not enough, search by projection again
-            // in a narrower window the camera has been already optimized with
-            // many points
+            // If many inliers but still not enough, search by projection
+            // again in a narrower window the camera has been already
+            // optimized with many points
             if (nGood > 30 && nGood < 50) {
               map_points_founded.clear();
               for (int ip = 0; ip < current_frame_.N_; ip++) {
@@ -1105,7 +1109,7 @@ bool Tracking::Relocalization() {
 
                 for (int io = 0; io < current_frame_.N_; io++) {
                   if (current_frame_.is_outliers_[io]) {
-                    current_frame_.map_points_[io] = NULL;
+                    current_frame_.map_points_[io] = nullptr;
                   }
                 }
               }
@@ -1113,7 +1117,8 @@ bool Tracking::Relocalization() {
           }
         }
 
-        // If the pose is supported by enough inliers stop ransacs and continue
+        // If the pose is supported by enough inliers stop ransacs and
+        // continue
         if (nGood >= 50) {
           is_match = true;
           break;
@@ -1162,7 +1167,7 @@ void Tracking::Reset() {
 
   if (initializer_) {
     delete initializer_;
-    initializer_ = static_cast<Initializer*>(NULL);
+    initializer_ = static_cast<Initializer*>(nullptr);
   }
 
   relative_frame_poses_.clear();

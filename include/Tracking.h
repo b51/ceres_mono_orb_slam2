@@ -106,6 +106,8 @@ class Tracking {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  protected:
+  bool Mapping();
+  bool TrackingWithKnownMap();
   // Main tracking function. It is independent of the input sensor.
   void Track();
 

@@ -152,7 +152,7 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF, Frame& F,
                             vector<MapPoint*>& vpMapPointMatches) {
   const vector<MapPoint*> vpMapPointsKF = pKF->GetMapPointMatches();
 
-  vpMapPointMatches = vector<MapPoint*>(F.N_, static_cast<MapPoint*>(NULL));
+  vpMapPointMatches = vector<MapPoint*>(F.N_, static_cast<MapPoint*>(nullptr));
 
   const DBoW2::FeatureVector& vFeatVecKF = pKF->feature_vector_;
 
@@ -246,7 +246,7 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF, Frame& F,
     for (int i = 0; i < HISTO_LENGTH; i++) {
       if (i == ind1 || i == ind2 || i == ind3) continue;
       for (size_t j = 0, jend = rotHist[i].size(); j < jend; j++) {
-        vpMapPointMatches[rotHist[i][j]] = static_cast<MapPoint*>(NULL);
+        vpMapPointMatches[rotHist[i][j]] = static_cast<MapPoint*>(nullptr);
         nmatches--;
       }
     }
@@ -273,7 +273,7 @@ int ORBmatcher::SearchByProjection(KeyFrame* pKF, const Eigen::Matrix4d& Scw,
 
   // Set of MapPoints already found in the KeyFrame
   set<MapPoint*> spAlreadyFound(vpMatched.begin(), vpMatched.end());
-  spAlreadyFound.erase(static_cast<MapPoint*>(NULL));
+  spAlreadyFound.erase(static_cast<MapPoint*>(nullptr));
 
   int nmatches = 0;
 
@@ -480,7 +480,7 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF1, KeyFrame* pKF2,
   const cv::Mat& Descriptors2 = pKF2->descriptors_;
 
   vpMatches12 =
-      vector<MapPoint*>(vpMapPoints1.size(), static_cast<MapPoint*>(NULL));
+      vector<MapPoint*>(vpMapPoints1.size(), static_cast<MapPoint*>(nullptr));
   vector<bool> vbMatched2(vpMapPoints2.size(), false);
 
   vector<int> rotHist[HISTO_LENGTH];
@@ -570,7 +570,7 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF1, KeyFrame* pKF2,
     for (int i = 0; i < HISTO_LENGTH; i++) {
       if (i == ind1 || i == ind2 || i == ind3) continue;
       for (size_t j = 0, jend = rotHist[i].size(); j < jend; j++) {
-        vpMatches12[rotHist[i][j]] = static_cast<MapPoint*>(NULL);
+        vpMatches12[rotHist[i][j]] = static_cast<MapPoint*>(nullptr);
         nmatches--;
       }
     }
@@ -1176,12 +1176,12 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
   // const Eigen::Vector3d tlc = Rlw * twc + tlw;
 
   for (int i = 0; i < LastFrame.N_; i++) {
-    MapPoint* pMP = LastFrame.map_points_[i];
+    MapPoint* map_point = LastFrame.map_points_[i];
 
-    if (pMP) {
+    if (map_point) {
       if (!LastFrame.is_outliers_[i]) {
         // Project
-        Eigen::Vector3d x3Dw = pMP->GetWorldPos();
+        Eigen::Vector3d x3Dw = map_point->GetWorldPos();
         Eigen::Vector3d x3Dc = Rcw * x3Dw + tcw;
 
         const float xc = x3Dc[0];
@@ -1208,7 +1208,7 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
 
         if (vIndices2.empty()) continue;
 
-        const cv::Mat dMP = pMP->GetDescriptor();
+        const cv::Mat dMP = map_point->GetDescriptor();
 
         int bestDist = 256;
         int bestIdx2 = -1;
@@ -1231,7 +1231,7 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
         }
 
         if (bestDist <= TH_HIGH) {
-          CurrentFrame.map_points_[bestIdx2] = pMP;
+          CurrentFrame.map_points_[bestIdx2] = map_point;
           nmatches++;
 
           if (mbCheckOrientation) {
@@ -1246,7 +1246,7 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
         }
       }
     }
-  }
+  } // end of for LastFrame.N_
 
   // Apply rotation consistency
   if (mbCheckOrientation) {
@@ -1260,7 +1260,7 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, const Frame& LastFrame,
       if (i != ind1 && i != ind2 && i != ind3) {
         for (size_t j = 0, jend = rotHist[i].size(); j < jend; j++) {
           CurrentFrame.map_points_[rotHist[i][j]] =
-              static_cast<MapPoint*>(NULL);
+              static_cast<MapPoint*>(nullptr);
           nmatches--;
         }
       }
@@ -1373,7 +1373,7 @@ int ORBmatcher::SearchByProjection(Frame& CurrentFrame, KeyFrame* pKF,
     for (int i = 0; i < HISTO_LENGTH; i++) {
       if (i != ind1 && i != ind2 && i != ind3) {
         for (size_t j = 0, jend = rotHist[i].size(); j < jend; j++) {
-          CurrentFrame.map_points_[rotHist[i][j]] = NULL;
+          CurrentFrame.map_points_[rotHist[i][j]] = nullptr;
           nmatches--;
         }
       }

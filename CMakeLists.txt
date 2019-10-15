@@ -22,6 +22,7 @@ find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(Ceres REQUIRED)
+#find_package(OpenMP REQUIRED)
 
 #catkin_package(
 #  INCLUDE_DIRS include
@@ -65,7 +66,8 @@ add_library(${PROJECT_NAME} SHARED
   src/CeresSim3.cc
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${PROJECT_NAME} PUBLIC
+  #OpenMP::OpenMP_CXX
   #${catkin_LIBRARIES}
   ${OpenCV_LIBS}
   ${EIGEN3_LIBS}

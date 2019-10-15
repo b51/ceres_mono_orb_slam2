@@ -471,7 +471,9 @@ reoptimize:
   }
   options.linear_solver_ordering.reset(ordering);
   options.num_threads = 4;
-  options.max_num_iterations = 100;
+  options.max_num_iterations = 10;
+  if (optimize_count == 0)
+    options.max_num_iterations = 5;
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   options.use_explicit_schur_complement = true;
 

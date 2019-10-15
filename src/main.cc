@@ -19,25 +19,25 @@ DEFINE_string(voc, "vocabulary/ORBvoc.txt", "Path to ORB vocabulary");
 DEFINE_string(config, "configs/TUM2.yaml", "Path to camera intrinsics");
 DEFINE_string(images, "rgbd_dataset_freiburg2_desk", "Path to images folder");
 
-void LoadImages(const string& strFile, vector<string>& vstrImageFilenames,
-                vector<double>& vTimestamps) {
-  ifstream f(strFile.c_str());
+void LoadImages(const std::string& strFile, std::vector<std::string>& vstrImageFilenames,
+                std::vector<double>& vTimestamps) {
+  std::ifstream f(strFile.c_str());
   if (!f.good()) LOG(FATAL) << strFile << " not exists";
 
   // skip first three lines
-  string s0;
+  std::string s0;
   getline(f, s0);
   getline(f, s0);
   getline(f, s0);
 
   while (!f.eof()) {
-    string s;
+    std::string s;
     getline(f, s);
     if (!s.empty()) {
-      stringstream ss;
+      std::stringstream ss;
       ss << s;
       double t;
-      string sRGB;
+      std::string sRGB;
       ss >> t;
       vTimestamps.push_back(t);
       ss >> sRGB;
@@ -50,7 +50,6 @@ int main(int argc, char* argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  FLAGS_minloglevel = google::INFO;
   FLAGS_logtostderr = true;
   FLAGS_colorlogtostderr = true;
 
@@ -65,7 +64,7 @@ int main(int argc, char* argv[]) {
 
   ORB_SLAM2::MonoORBSlam slam(FLAGS_voc, FLAGS_config, true);
 
-  vector<float> times_track;
+  std::vector<float> times_track;
   times_track.resize(n_images);
 
   LOG(INFO) << "----------";

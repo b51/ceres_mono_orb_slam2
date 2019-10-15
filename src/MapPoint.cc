@@ -55,7 +55,7 @@ MapPoint::MapPoint(const Eigen::Vector3d& pos, KeyFrame* reference_keyframe,
       n_visible_(1),
       n_found_(1),
       is_bad_(false),
-      replaced_map_point_(static_cast<MapPoint*>(NULL)),
+      replaced_map_point_(static_cast<MapPoint*>(nullptr)),
       min_distance_(0),
       max_distance_(0),
       map_(map) {
@@ -81,11 +81,11 @@ MapPoint::MapPoint(const Eigen::Vector3d& pos, Map* map, Frame* frame,
       corrected_by_keyframe_(0),
       corrected_reference_(0),
       n_BA_global_for_keyframe_(0),
-      reference_keyframe_(static_cast<KeyFrame*>(NULL)),
+      reference_keyframe_(static_cast<KeyFrame*>(nullptr)),
       n_visible_(1),
       n_found_(1),
       is_bad_(false),
-      replaced_map_point_(NULL),
+      replaced_map_point_(nullptr),
       map_(map) {
   world_pose_ = pos;
   Eigen::Vector3d Ow = frame->GetCameraCenter();

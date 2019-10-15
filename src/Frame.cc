@@ -93,7 +93,7 @@ Frame::Frame(const cv::Mat& imgGray, const double& timestamp,
              cv::Mat& distCoef, const float& bf, const float& thDepth)
     : orb_vocabulary_(voc),
       orb_extractor_left_(extractor),
-      orb_extractor_right_(static_cast<ORBextractor*>(NULL)),
+      orb_extractor_right_(static_cast<ORBextractor*>(nullptr)),
       timestamp_(timestamp),
       K_(K.clone()),
       dist_coef_(distCoef.clone()),
@@ -127,7 +127,7 @@ Frame::Frame(const cv::Mat& imgGray, const double& timestamp,
   mvuRight = vector<float>(N_, -1);
   depthes_ = vector<float>(N_, -1);
 
-  map_points_ = vector<MapPoint*>(N_, static_cast<MapPoint*>(NULL));
+  map_points_ = vector<MapPoint*>(N_, static_cast<MapPoint*>(nullptr));
   is_outliers_ = vector<bool>(N_, false);
 
   // This is done only for the first Frame (or after a change in the

@@ -85,7 +85,7 @@ KeyFrame::KeyFrame(Frame& frame, Map* map, KeyFrameDatabase* keyframe_database)
       keyframe_database_(keyframe_database),
       orb_vocabulary_(frame.orb_vocabulary_),
       is_first_connection_(true),
-      parent_(NULL),
+      parent_(nullptr),
       do_not_erase_(false),
       do_to_be_erased_(false),
       is_bad_(false),
@@ -249,13 +249,13 @@ void KeyFrame::AddMapPoint(MapPoint* map_point, const size_t& index) {
 
 void KeyFrame::EraseMapPointMatch(const size_t& index) {
   unique_lock<mutex> lock(mutex_features_);
-  map_points_[index] = static_cast<MapPoint*>(NULL);
+  map_points_[index] = static_cast<MapPoint*>(nullptr);
 }
 
 void KeyFrame::EraseMapPointMatch(MapPoint* map_point) {
   int index = map_point->GetIndexInKeyFrame(this);
   if (index >= 0) {
-    map_points_[index] = static_cast<MapPoint*>(NULL);
+    map_points_[index] = static_cast<MapPoint*>(nullptr);
   }
 }
 
@@ -349,7 +349,7 @@ void KeyFrame::UpdateConnections() {
   // In case no keyframe counter is over threshold add the one with maximum
   // counter
   int nmax = 0;
-  KeyFrame* keyframe_max = NULL;
+  KeyFrame* keyframe_max = nullptr;
   int th = 15;
 
   vector<pair<int, KeyFrame*> > pairs;

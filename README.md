@@ -38,9 +38,10 @@ $ ./mono_slam --voc path/to/ORBvoc.txt --config path/to/configs/config.yaml --im
   - [X] g2oSim3 to be remove
   - [X] Totally remove g2o to get rid of the tons annoying Warnings
   - [X] cv::Mat for matrix to be remove
-  - [ ] Fix CeresOptimizer, sometimes get "Matrix not positive definite" warning
-  - [ ] Fix Relocalization, sometimes may get stuck
-  - [ ] EssentialGraph in CeresOptimizer need to review again
+  - [X] Fix CeresOptimizer, sometimes get "Matrix not positive definite" warning
+  - [X] Fix Relocalization, sometimes may get stuck
+  - [X] Fix LocalBundleAdjustment with add inv sigma to error calculation
+  - [ ] EssentialGraph in CeresOptimizer need to fix
   - [ ] Reconstruct to make code modular, at least make feature matcher as an independent module
   - [ ] Add IMU data to get scale information
   - [ ] Add map save for map reusing
