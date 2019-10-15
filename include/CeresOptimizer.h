@@ -254,11 +254,11 @@ class EssentialGraphErrorTerm {
     Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_b_frame(p_b_ptr);
     Eigen::Map<const Eigen::Quaternion<T>> q_b_frame(q_b_ptr);
 
-    Eigen::Map<Eigen::Matrix<T, 8, 1>> residuals(residuals_ptr);
+    Eigen::Map<Eigen::Matrix<T, 7, 1>> residuals(residuals_ptr);
 
-    T s_b_frame = T(1.) / scale_b_ptr[0];
+    T s_frame_b = T(1.) / scale_b_ptr[0];
     Eigen::Quaternion<T> q_frame_b = q_b_frame.conjugate();
-    Eigen::Matrix<T, 3, 1> p_frame_b = -(q_frame_b * (s_b_frame * p_b_frame));
+    Eigen::Matrix<T, 3, 1> p_frame_b = -(q_frame_b * (s_frame_b * p_b_frame));
 
     T s_a_b = scale_a_ptr[0] * scale_b_ptr[0];
     Eigen::Quaternion<T> q_a_b = (q_a_frame * q_frame_b).normalized();
@@ -268,20 +268,15 @@ class EssentialGraphErrorTerm {
     // scale residual
     residuals[0] = T(Sij_.scale()) - s_a_b;
 
+    Eigen::Quaternion<T> delta_q = Sij_.rotation().template cast<T>() * q_a_b.conjugate();
+    // Compute the residuals.
+    // [ position         ]   [ delta_p          ]
+    // [ orientation (3x1)] = [ 2 * delta_q(0:2) ]
     // quaternion residuals
-    residuals[1] =
-        Sij_.rotation().template cast<T>().coeffs()[0] - q_a_b.coeffs()[0];
-    residuals[2] =
-        Sij_.rotation().template cast<T>().coeffs()[1] - q_a_b.coeffs()[1];
-    residuals[3] =
-        Sij_.rotation().template cast<T>().coeffs()[2] - q_a_b.coeffs()[2];
-    residuals[4] =
-        Sij_.rotation().template cast<T>().coeffs()[3] - q_a_b.coeffs()[3];
+    residuals.template block<3, 1>(1, 0) = T(2.0) * delta_q.vec();
 
     // translation residuals
-    residuals[5] = Sij_.translation().template cast<T>()[0] - p_a_b[0];
-    residuals[6] = Sij_.translation().template cast<T>()[1] - p_a_b[1];
-    residuals[7] = Sij_.translation().template cast<T>()[2] - p_a_b[2];
+    residuals.template block<3, 1>(4, 0) = Sij_.translation().template cast<T>() - p_a_b;
     return true;
   }
 
@@ -289,7 +284,7 @@ class EssentialGraphErrorTerm {
 
   static ceres::CostFunction* Create(const Sim3& Sij) {
     return new ceres::AutoDiffCostFunction<EssentialGraphErrorTerm,
-                                           /* residual numbers */ 8,
+                                           /* residual numbers */ 7,
                                            /* first optimize numbers */ 3,
                                            /* second optimize numbers */ 4,
                                            /* third optimize numbers */ 1,
