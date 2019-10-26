@@ -684,11 +684,11 @@ void LoopClosing::ResetIfRequested() {
 }
 
 void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
-  cout << "Starting Global Bundle Adjustment" << endl;
+  std::cout << "Starting Global Bundle Adjustment" << endl;
 
   int index = full_BA_index_;
-  CeresOptimizer::GlobalBundleAdjustemnt(map_, 10, &is_stop_global_BA_, nLoopKF,
-                                         false);
+  CeresOptimizer::GlobalBundleAdjustemnt(map_, 50, &is_stop_global_BA_, nLoopKF,
+                                         true);
 
   // Update all MapPoints and KeyFrames
   // Local Mapping was active during BA, that means that there might be new
@@ -720,8 +720,7 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF) {
         KeyFrame* keyframe = keyframes_to_check.front();
         const set<KeyFrame*> childrens = keyframe->GetChilds();
         Eigen::Matrix4d Twc = keyframe->GetPoseInverse();
-        for (set<KeyFrame*>::const_iterator sit = childrens.begin();
-             sit != childrens.end(); sit++) {
+        for (auto sit = childrens.begin(); sit != childrens.end(); sit++) {
           KeyFrame* child = *sit;
           if (child->n_BA_global_for_keyframe_ != nLoopKF) {
             Eigen::Matrix4d Tchildc = child->GetPose() * Twc;

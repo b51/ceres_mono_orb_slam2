@@ -17,6 +17,7 @@
 #include <glog/logging.h>
 #include <Eigen/Core>
 #include <algorithm>
+#include <sophus/sim3.hpp>
 
 #include "Frame.h"
 #include "KeyFrame.h"
@@ -241,7 +242,9 @@ class Sim3ErrorTerm {
 // TODO(b51): get residual to Sim3 mode
 class EssentialGraphErrorTerm {
  public:
-  EssentialGraphErrorTerm(const Sim3& Sij) : Sij_(Sij) {}
+  EssentialGraphErrorTerm(const Sim3& Sab,
+                          const Eigen::Matrix<double, 6, 6>& sqrt_information)
+      : Sab_(Sab), sqrt_information_(sqrt_information) {}
 
   template <typename T>
   bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
@@ -254,48 +257,67 @@ class EssentialGraphErrorTerm {
     Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_b_frame(p_b_ptr);
     Eigen::Map<const Eigen::Quaternion<T>> q_b_frame(q_b_ptr);
 
-    Eigen::Map<Eigen::Matrix<T, 7, 1>> residuals(residuals_ptr);
+    Eigen::Map<Eigen::Matrix<T, 6, 1>> residuals(residuals_ptr);
+
+    /*
+    Sophus::Sim3<T> T_a_frame(q_a_frame, p_a_frame);
+    // T_a_frame.setScale(scale_a_ptr[0]);
+    Sophus::Sim3<T> T_b_frame(q_b_frame, p_b_frame);
+    // T_a_frame.setScale(scale_b_ptr[0]);
+
+    Sophus::Sim3<T> T_a_b(Sab_.rotation().template cast<T>(),
+                          Sab_.translation().template cast<T>());
+    // T_a_b.setScale(T(Sab_.scale()));
+
+    residuals = (T_a_b * (T_b_frame * T_a_frame.inverse())).log();
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
+    */
 
     T s_frame_b = T(1.) / scale_b_ptr[0];
     Eigen::Quaternion<T> q_frame_b = q_b_frame.conjugate();
-    Eigen::Matrix<T, 3, 1> p_frame_b = -(q_frame_b * (s_frame_b * p_b_frame));
+    Eigen::Matrix<T, 3, 1> p_frame_b = q_frame_b * (-s_frame_b * p_b_frame);
 
-    T s_a_b = scale_a_ptr[0] * scale_b_ptr[0];
-    Eigen::Quaternion<T> q_a_b = (q_a_frame * q_frame_b).normalized();
+    T s_a_b = scale_a_ptr[0] * s_frame_b;
+    Eigen::Quaternion<T> q_a_b = q_a_frame * q_frame_b;
     Eigen::Matrix<T, 3, 1> p_a_b =
         scale_a_ptr[0] * (q_a_frame * p_frame_b) + p_a_frame;
 
-    // scale residual
-    residuals[0] = T(Sij_.scale()) - s_a_b;
-
-    Eigen::Quaternion<T> delta_q = Sij_.rotation().template cast<T>() * q_a_b.conjugate();
+    Eigen::Quaternion<T> delta_q = Sab_.rotation().template cast<T>() * q_a_b.conjugate();
     // Compute the residuals.
     // [ position         ]   [ delta_p          ]
     // [ orientation (3x1)] = [ 2 * delta_q(0:2) ]
     // quaternion residuals
-    residuals.template block<3, 1>(1, 0) = T(2.0) * delta_q.vec();
+    residuals.template block<3, 1>(0, 0) = T(2.0) * delta_q.vec();
 
     // translation residuals
-    residuals.template block<3, 1>(4, 0) = Sij_.translation().template cast<T>() - p_a_b;
+    residuals.template block<3, 1>(3, 0) =
+        // Sab_.translation().template cast<T>() - p_a_b;
+        T(Sab_.scale()) * Sab_.translation().template cast<T>() - s_a_b * p_a_b;
+
+    // scale residual
+    // residuals[6] = T(Sab_.scale()) - s_a_b;
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
     return true;
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  static ceres::CostFunction* Create(const Sim3& Sij) {
+  static ceres::CostFunction* Create(
+      const Sim3& Sab, const Eigen::Matrix<double, 6, 6>& sqrt_information) {
     return new ceres::AutoDiffCostFunction<EssentialGraphErrorTerm,
-                                           /* residual numbers */ 7,
+                                           /* residual numbers */ 6,
                                            /* first optimize numbers */ 3,
                                            /* second optimize numbers */ 4,
                                            /* third optimize numbers */ 1,
                                            /* fourth optimize numbers */ 3,
                                            /* fifth optimize numbers */ 4,
                                            /* sixth optimize numbers */ 1>(
-        new EssentialGraphErrorTerm(Sij));
+        new EssentialGraphErrorTerm(Sab, sqrt_information));
   }
 
  private:
-  const Sim3 Sij_;
+  const Sim3 Sab_;
+  const Eigen::Matrix<double, 6, 6> sqrt_information_;
 };
 
 // StopFlagCallback reference to
@@ -321,6 +343,14 @@ class StopFlagCallback : public ceres::IterationCallback {
 
 class CeresOptimizer {
  public:
+   /*
+  void static OriginBundleAdjustment(const vector<KeyFrame*>& vpKFs,
+                                     const vector<MapPoint*>& vpMP,
+                                     int nIterations, bool* pbStopFlag,
+                                     const unsigned long nLoopKF,
+                                     const bool bRobust);
+                                     */
+
   void static BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
                                const std::vector<MapPoint*>& map_points,
                                int n_iterations = 200,

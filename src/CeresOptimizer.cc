@@ -14,6 +14,13 @@
 #include <ceres/local_parameterization.h>
 #include <ceres/solver.h>
 #include <unordered_map>
+// #include "lib/g2o/g2o/core/block_solver.h"
+// #include "lib/g2o/g2o/core/optimization_algorithm_levenberg.h"
+// #include "lib/g2o/g2o/solvers/linear_solver_eigen.h"
+// #include "lib/g2o/g2o/types/types_six_dof_expmap.h"
+// #include "lib/g2o/g2o/core/robust_kernel_impl.h"
+// #include "lib/g2o/g2o/solvers/linear_solver_dense.h"
+// #include "lib/g2o/g2o/types/types_seven_dof_expmap.h"
 
 #include "MatEigenConverter.h"
 
@@ -27,7 +34,152 @@ void CeresOptimizer::GlobalBundleAdjustemnt(Map* map, int n_iterations,
   std::vector<MapPoint*> map_points = map->GetAllMapPoints();
   BundleAdjustment(keyframes, map_points, n_iterations, stop_flag,
                    n_loop_keyframe, is_robust);
+  // OriginBundleAdjustment(keyframes, map_points, n_iterations, stop_flag,
+  //                 n_loop_keyframe, is_robust);
 }
+
+/*
+void CeresOptimizer::OriginBundleAdjustment(const vector<KeyFrame*>& vpKFs,
+                                            const vector<MapPoint*>& vpMP,
+                                            int nIterations, bool* pbStopFlag,
+                                            const unsigned long nLoopKF,
+                                            const bool bRobust) {
+  std::vector<bool> vbNotIncludedMP;
+  vbNotIncludedMP.resize(vpMP.size());
+
+  g2o::SparseOptimizer optimizer;
+  g2o::BlockSolver_6_3::LinearSolverType* linearSolver;
+
+  linearSolver =
+      new g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>();
+
+  g2o::BlockSolver_6_3* solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+
+  g2o::OptimizationAlgorithmLevenberg* solver =
+      new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+  optimizer.setAlgorithm(solver);
+
+  if (pbStopFlag) optimizer.setForceStopFlag(pbStopFlag);
+
+  long unsigned int maxKFid = 0;
+
+  // Set KeyFrame vertices
+  for (size_t i = 0; i < vpKFs.size(); i++) {
+    KeyFrame* pKF = vpKFs[i];
+    if (pKF->isBad()) continue;
+    g2o::VertexSE3Expmap* vSE3 = new g2o::VertexSE3Expmap();
+    Eigen::Matrix4d T = pKF->GetPose();
+    Eigen::Matrix3d R = T.block<3, 3>(0, 0);
+    Eigen::Vector3d t = T.block<3, 1>(0, 3);
+    vSE3->setEstimate(g2o::SE3Quat(R, t));
+    vSE3->setId(pKF->id_);
+    vSE3->setFixed(pKF->id_ == 0);
+    optimizer.addVertex(vSE3);
+    if (pKF->id_ > maxKFid) maxKFid = pKF->id_;
+  }
+
+  const float thHuber2D = sqrt(5.99);
+
+  // Set MapPoint vertices
+  for (size_t i = 0; i < vpMP.size(); i++) {
+    MapPoint* pMP = vpMP[i];
+    if (pMP->isBad()) continue;
+    g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
+    vPoint->setEstimate(pMP->GetWorldPos());
+    const int id = pMP->id_ + maxKFid + 1;
+    vPoint->setId(id);
+    vPoint->setMarginalized(true);
+    optimizer.addVertex(vPoint);
+
+    const map<KeyFrame*, size_t> observations = pMP->GetObservations();
+
+    int nEdges = 0;
+    // SET EDGES
+    for (map<KeyFrame*, size_t>::const_iterator mit = observations.begin();
+         mit != observations.end(); mit++) {
+      KeyFrame* pKF = mit->first;
+      if (pKF->isBad() || pKF->id_ > maxKFid) continue;
+
+      nEdges++;
+
+      const cv::KeyPoint& kpUn = pKF->undistort_keypoints_[mit->second];
+
+      Eigen::Matrix<double, 2, 1> obs;
+      obs << kpUn.pt.x, kpUn.pt.y;
+
+      g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
+
+      e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(
+                          optimizer.vertex(id)));
+      e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(
+                          optimizer.vertex(pKF->id_)));
+      e->setMeasurement(obs);
+      const float& invSigma2 = pKF->inv_level_sigma2s_[kpUn.octave];
+      e->setInformation(Eigen::Matrix2d::Identity() * invSigma2);
+
+      if (bRobust) {
+        g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+        e->setRobustKernel(rk);
+        rk->setDelta(thHuber2D);
+      }
+
+      e->fx = pKF->fx_;
+      e->fy = pKF->fy_;
+      e->cx = pKF->cx_;
+      e->cy = pKF->cy_;
+
+      optimizer.addEdge(e);
+    }
+
+    if (nEdges == 0) {
+      optimizer.removeVertex(vPoint);
+      vbNotIncludedMP[i] = true;
+    } else {
+      vbNotIncludedMP[i] = false;
+    }
+  }
+
+  // Optimize!
+  optimizer.initializeOptimization();
+  optimizer.optimize(nIterations);
+
+  // Recover optimized data
+
+  // Keyframes
+  for (size_t i = 0; i < vpKFs.size(); i++) {
+    KeyFrame* pKF = vpKFs[i];
+    if (pKF->isBad()) continue;
+    g2o::VertexSE3Expmap* vSE3 =
+        static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(pKF->id_));
+    g2o::SE3Quat SE3quat = vSE3->estimate();
+    if (nLoopKF == 0) {
+      pKF->SetPose(SE3quat.to_homogeneous_matrix());
+    } else {
+      pKF->global_BA_Tcw_ = SE3quat.to_homogeneous_matrix();
+      pKF->n_BA_global_for_keyframe_ = nLoopKF;
+    }
+  }
+
+  // Points
+  for (size_t i = 0; i < vpMP.size(); i++) {
+    if (vbNotIncludedMP[i]) continue;
+
+    MapPoint* pMP = vpMP[i];
+
+    if (pMP->isBad()) continue;
+    g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(
+        optimizer.vertex(pMP->id_ + maxKFid + 1));
+
+    if (nLoopKF == 0) {
+      pMP->SetWorldPos(vPoint->estimate());
+      pMP->UpdateNormalAndDepth();
+    } else {
+      pMP->global_BA_pose_ = vPoint->estimate();
+      pMP->n_BA_global_for_keyframe_ = nLoopKF;
+    }
+  }
+}
+*/
 
 void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
                                       const std::vector<MapPoint*>& map_points,
@@ -42,11 +194,25 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     return;
   }
 
+  long unsigned int max_keyframe_id = 0;
+
   // ided keyframe for pose recovery after optimize
   std::map<KeyFrame*, Eigen::Matrix<double, 7, 1>> ided_keyframe_pose;
 
+  // Setup optimizer
+  ceres::Problem problem;
+  ceres::LossFunction* loss_function = nullptr;
+  if (is_robust) {
+    loss_function = new ceres::HuberLoss(sqrt(5.991));
+  }
+  ceres::LocalParameterization* quaternion_local_parameterization =
+      new ceres::EigenQuaternionParameterization;
+  ceres::ParameterBlockOrdering* ordering = new ceres::ParameterBlockOrdering;
+
   for (size_t i = 0; i < keyframes.size(); i++) {
     KeyFrame* keyframe = keyframes[i];
+    if (keyframe->isBad()) continue;
+
     Eigen::Matrix<double, 7, 1> keyframe_Tcw;
 
     // Get keyframe Poses
@@ -58,16 +224,26 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     keyframe_Tcw.block<4, 1>(3, 0) = Eigen::Quaterniond(keyframe_R).coeffs();
 
     ided_keyframe_pose[keyframe] = keyframe_Tcw;
-  }
+    if (keyframe->id_ > max_keyframe_id) {
+      max_keyframe_id = keyframe->id_;
+    }
 
-  // Setup optimizer
-  ceres::Problem problem;
-  ceres::LossFunction* loss_function = nullptr;
-  if (is_robust) {
-    loss_function = new ceres::HuberLoss(sqrt(5.991));
+    problem.AddParameterBlock(
+        ided_keyframe_pose[keyframe].block<3, 1>(0, 0).data(), 3);
+    problem.AddParameterBlock(
+        ided_keyframe_pose[keyframe].block<4, 1>(3, 0).data(), 4,
+        quaternion_local_parameterization);
+    ordering->AddElementToGroup(
+        ided_keyframe_pose[keyframe].block<3, 1>(0, 0).data(), 1);
+    ordering->AddElementToGroup(
+        ided_keyframe_pose[keyframe].block<4, 1>(3, 0).data(), 1);
+    if (keyframe->id_ == 0) {
+      problem.SetParameterBlockConstant(
+          ided_keyframe_pose[keyframe].block<3, 1>(0, 0).data());
+      problem.SetParameterBlockConstant(
+          ided_keyframe_pose[keyframe].block<4, 1>(3, 0).data());
+    }
   }
-  ceres::LocalParameterization* quaternion_local_parameterization =
-      new ceres::EigenQuaternionParameterization;
 
   // ided map points for pose recovery after optimize
   std::vector<Eigen::Vector3d> ided_map_point_pose(map_points.size(),
@@ -88,7 +264,7 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
     // Set Edges
     for (auto it = observations.begin(); it != observations.end(); it++) {
       KeyFrame* keyframe = it->first;
-      if (keyframe->isBad()) {
+      if (keyframe->isBad() || keyframe->id_ > max_keyframe_id) {
         continue;
       }
       n_edges++;
@@ -113,19 +289,11 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
           ided_keyframe_pose[keyframe].block<3, 1>(0, 0).data(),
           ided_keyframe_pose[keyframe].block<4, 1>(3, 0).data(),
           ided_map_point_pose[i].data());
-      problem.SetParameterization(
-          ided_keyframe_pose[keyframe].block<4, 1>(3, 0).data(),
-          quaternion_local_parameterization);
-      // problem->SetParameterization(pose_end_iter->second.q.coeffs().data(),
-      //                             quaternion_local_parameterization);
-      if (keyframe->id_ == 0) {
-        problem.SetParameterBlockConstant(
-            ided_keyframe_pose[keyframe].block<3, 1>(0, 0).data());
-        problem.SetParameterBlockConstant(
-            ided_keyframe_pose[keyframe].block<4, 1>(3, 0).data());
-      }
+      ordering->AddElementToGroup(
+          ided_map_point_pose[i].data(), 0);
     }
     if (n_edges == 0) {
+      problem.RemoveParameterBlock(ided_map_point_pose[i].data());
       is_not_optimized_map_point[i] = true;
     } else {
       is_not_optimized_map_point[i] = false;
@@ -146,30 +314,30 @@ void CeresOptimizer::BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
   // reset keyframes pose to optimized pose
   for (auto it = ided_keyframe_pose.begin(); it != ided_keyframe_pose.end();
        it++) {
-    if (it->first->isBad()) {
+    KeyFrame* keyframe = it->first;
+    if (keyframe->isBad()) {
       continue;
     }
     Eigen::Matrix<double, 7, 1> Tcw = it->second;
     // Eigen Quaterniond constructed with [w, x, y, z], not same as coeffs
     Eigen::Matrix4d pose = MatEigenConverter::Matrix_7_1_ToMatrix4d(Tcw);
     if (n_loop_keyframe == 0) {
-      it->first->SetPose(pose);
+      keyframe->SetPose(pose);
     } else {
-      it->first->global_BA_Tcw_ = pose;
-      it->first->n_BA_global_for_keyframe_ = n_loop_keyframe;
+      keyframe->global_BA_Tcw_ = pose;
+      keyframe->n_BA_global_for_keyframe_ = n_loop_keyframe;
     }
   }
 
   // reset map points pose to optimized pose
-  for (size_t i = 0; i < ided_map_point_pose.size(); i++) {
+  for (size_t i = 0; i < map_points.size(); i++) {
     if (is_not_optimized_map_point[i]) {
       continue;
     }
     MapPoint* map_point = map_points[i];
 
-    if (map_point->isBad()) {
+    if (map_point->isBad())
       continue;
-    }
 
     if (n_loop_keyframe == 0) {
       map_point->SetWorldPos(ided_map_point_pose[i]);
@@ -705,7 +873,18 @@ void CeresOptimizer::OptimizeEssentialGraph(
     const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
     const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
     const bool& is_fixed_scale) {
+
+  ceres::Problem problem;
+  ceres::LocalParameterization* quaternion_local_parameterization =
+      new ceres::EigenQuaternionParameterization;
+  ceres::Solver::Options options;
+  options.max_num_iterations = 100;
+  options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+  ceres::Solver::Summary summary;
+
   int min_weight = 100;
+  const Eigen::Matrix<double, 6, 6> sqrt_information =
+      Eigen::Matrix<double, 6, 6>::Identity();
 
   const std::vector<KeyFrame*> all_keyframes = map->GetAllKeyFrames();
   const std::vector<MapPoint*> all_map_points = map->GetAllMapPoints();
@@ -732,17 +911,19 @@ void CeresOptimizer::OptimizeEssentialGraph(
       Sim3 Siw(1.0, Rcw, tcw);
       Scws[id_i] = Siw;
     }
+    problem.AddParameterBlock(Scws[id_i].translation().data(), 3);
+    problem.AddParameterBlock(Scws[id_i].rotation().coeffs().data(), 4,
+                              quaternion_local_parameterization);
+    problem.AddParameterBlock(&Scws[id_i].scale(), 1);
+
+    if (keyframe == loop_keyframe) {
+      problem.SetParameterBlockConstant(Scws[id_i].translation().data());
+      problem.SetParameterBlockConstant(Scws[id_i].rotation().coeffs().data());
+      problem.SetParameterBlockConstant(&Scws[id_i].scale());
+    }
   }  // end of all_keyframes loop
 
   std::set<std::pair<long unsigned int, long unsigned int>> inserted_edges;
-
-  ceres::Problem problem;
-  ceres::LocalParameterization* quaternion_local_parameterization =
-      new ceres::EigenQuaternionParameterization;
-  ceres::Solver::Options options;
-  options.max_num_iterations = 100;
-  options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-  ceres::Solver::Summary summary;
 
   // Set Loop connections
   for (auto it = loop_connections.begin(); it != loop_connections.end(); it++) {
@@ -762,25 +943,15 @@ void CeresOptimizer::OptimizeEssentialGraph(
       const Sim3 Sjw = Scws[id_j];
       const Sim3 Sji = Sjw * Swi;
 
-      ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji);
+      ceres::CostFunction* cost_function =
+          EssentialGraphErrorTerm::Create(Sji, sqrt_information);
       problem.AddResidualBlock(
           cost_function, nullptr, Scws[id_j].translation().data(),
           Scws[id_j].rotation().coeffs().data(), &(Scws[id_j].scale()),
           Scws[id_i].translation().data(),
           Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
 
-      problem.SetParameterization(Scws[id_j].rotation().coeffs().data(),
-                                  quaternion_local_parameterization);
-      problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
-                                  quaternion_local_parameterization);
-      if (id_j == loop_keyframe->id_) {
-        problem.SetParameterBlockConstant(
-            Scws[id_j].rotation().coeffs().data());
-        problem.SetParameterBlockConstant(Scws[id_j].translation().data());
-        problem.SetParameterBlockConstant(&Scws[id_j].scale());
-      }
-
-      inserted_edges.insert(make_pair(min(id_i, id_j), max(id_i, id_j)));
+      inserted_edges.insert(std::make_pair(min(id_i, id_j), max(id_i, id_j)));
     }
   }  // end of loop connections
 
@@ -803,7 +974,6 @@ void CeresOptimizer::OptimizeEssentialGraph(
 
       Sim3 Sjw;
 
-      // TODO(b51): Add Sjw = it_j->second situaion
       auto it_j = keyframes_non_corrected_sim3.find(parent_keyframe);
       if (it_j != keyframes_non_corrected_sim3.end()) {
         Sjw = it_j->second;
@@ -812,54 +982,37 @@ void CeresOptimizer::OptimizeEssentialGraph(
       }
       Sim3 Sji = Sjw * Swi;
 
-      ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji);
+      ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji, sqrt_information);
       problem.AddResidualBlock(
           cost_function, nullptr, Scws[id_j].translation().data(),
           Scws[id_j].rotation().coeffs().data(), &(Scws[id_j].scale()),
           Scws[id_i].translation().data(),
           Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-
-      problem.SetParameterization(Scws[id_j].rotation().coeffs().data(),
-                                  quaternion_local_parameterization);
-      problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
-                                  quaternion_local_parameterization);
-      if (id_j == loop_keyframe->id_) {
-        problem.SetParameterBlockConstant(
-            Scws[id_j].rotation().coeffs().data());
-        problem.SetParameterBlockConstant(Scws[id_j].translation().data());
-        problem.SetParameterBlockConstant(&Scws[id_j].scale());
-      }
     }
 
     // Set for loop edges
     const std::set<KeyFrame*> loop_edges = keyframe->GetLoopEdges();
     for (auto it = loop_edges.begin(); it != loop_edges.end(); it++) {
-      KeyFrame* loop_keyframe = *it;
-      if (loop_keyframe->id_ < keyframe->id_) {
+      KeyFrame* local_loop_keyframe = *it;
+      if (local_loop_keyframe->id_ < keyframe->id_) {
         Sim3 Slw;
-        auto it_l = keyframes_non_corrected_sim3.find(loop_keyframe);
+        auto it_l = keyframes_non_corrected_sim3.find(local_loop_keyframe);
         if (it_l != keyframes_non_corrected_sim3.end()) {
           Slw = it_l->second;
         } else {
-          Slw = Scws[loop_keyframe->id_];
+          Slw = Scws[local_loop_keyframe->id_];
         }
         Sim3 Sli = Slw * Swi;
 
         ceres::CostFunction* cost_function =
-            EssentialGraphErrorTerm::Create(Sli);
+            EssentialGraphErrorTerm::Create(Sli, sqrt_information);
         problem.AddResidualBlock(
             cost_function, nullptr,
-            Scws[loop_keyframe->id_].translation().data(),
-            Scws[loop_keyframe->id_].rotation().coeffs().data(),
-            &(Scws[loop_keyframe->id_].scale()),
+            Scws[local_loop_keyframe->id_].translation().data(),
+            Scws[local_loop_keyframe->id_].rotation().coeffs().data(),
+            &(Scws[local_loop_keyframe->id_].scale()),
             Scws[id_i].translation().data(),
             Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-
-        problem.SetParameterization(
-            Scws[loop_keyframe->id_].rotation().coeffs().data(),
-            quaternion_local_parameterization);
-        problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
-                                    quaternion_local_parameterization);
       }
     }
 
@@ -888,18 +1041,12 @@ void CeresOptimizer::OptimizeEssentialGraph(
         Sim3 Sni = Snw * Swi;
 
         ceres::CostFunction* cost_function =
-            EssentialGraphErrorTerm::Create(Sni);
+            EssentialGraphErrorTerm::Create(Sni, sqrt_information);
         problem.AddResidualBlock(
             cost_function, nullptr, Scws[keyframe_n->id_].translation().data(),
             Scws[keyframe_n->id_].rotation().coeffs().data(),
             &(Scws[keyframe_n->id_].scale()), Scws[id_i].translation().data(),
             Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-
-        problem.SetParameterization(
-            Scws[keyframe_n->id_].rotation().coeffs().data(),
-            quaternion_local_parameterization);
-        problem.SetParameterization(Scws[id_i].rotation().coeffs().data(),
-                                    quaternion_local_parameterization);
       }
     }
   }  // end of for loop all_keyframes

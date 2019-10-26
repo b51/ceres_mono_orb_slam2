@@ -505,7 +505,7 @@ void Tracking::CreateInitialMapMonocular() {
   float median_depth = init_keyframe->ComputeSceneMedianDepth(2);
   float inv_median_depth = 1.0f / median_depth;
 
-  if (median_depth < 0 || current_keyframe->TrackedMapPoints(1) < 100) {
+  if (median_depth < 0 || current_keyframe->TrackedMapPoints(1) < 80) {
     std::cout << "Wrong initialization, reseting..." << std::endl;
     Reset();
     return;
