@@ -74,7 +74,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   ${Pangolin_LIBRARIES}
   ${CERES_LIBRARIES}
   ${PROJECT_SOURCE_DIR}/lib/DBoW2/lib/libDBoW2.so
-  #${PROJECT_SOURCE_DIR}/lib/g2o/lib/libg2o.so
   glog
   gflags
 )

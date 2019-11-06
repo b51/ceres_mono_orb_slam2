@@ -343,14 +343,6 @@ class StopFlagCallback : public ceres::IterationCallback {
 
 class CeresOptimizer {
  public:
-   /*
-  void static OriginBundleAdjustment(const vector<KeyFrame*>& vpKFs,
-                                     const vector<MapPoint*>& vpMP,
-                                     int nIterations, bool* pbStopFlag,
-                                     const unsigned long nLoopKF,
-                                     const bool bRobust);
-                                     */
-
   void static BundleAdjustment(const std::vector<KeyFrame*>& keyframes,
                                const std::vector<MapPoint*>& map_points,
                                int n_iterations = 200,
