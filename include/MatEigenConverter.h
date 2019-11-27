@@ -41,7 +41,7 @@ class MatEigenConverter {
       const Eigen::Matrix<double, 7, 1>& Tcw_7_1);
 
   // Sim3
-  static Eigen::Matrix4d Sim3ToMatrix4d(const Sim3& sim);
+  static Eigen::Matrix4d Sim3ToMatrix4d(const Sim3d& sim);
 };
 
 #endif

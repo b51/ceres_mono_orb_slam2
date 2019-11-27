@@ -22,6 +22,7 @@ find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(Ceres REQUIRED)
+find_package(Sophus REQUIRED)
 #find_package(OpenMP REQUIRED)
 
 #catkin_package(
@@ -41,6 +42,7 @@ include_directories(
   #${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
   ${Pangolin_INCLUDE_DIRS}
+  ${Sophus_INCLUDE_DIRS}
 )
 
 add_library(${PROJECT_NAME} SHARED
@@ -63,7 +65,6 @@ add_library(${PROJECT_NAME} SHARED
   src/Initializer.cc
   src/Viewer.cc
   src/MatEigenConverter.cc
-  src/CeresSim3.cc
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC

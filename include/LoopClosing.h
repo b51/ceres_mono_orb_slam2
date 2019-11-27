@@ -39,6 +39,7 @@
 
 #include "KeyFrameDatabase.h"
 #include "CeresSim3.h"
+#include <sophus/sim3.hpp>
 
 #include <mutex>
 #include <thread>
@@ -54,9 +55,14 @@ class LoopClosing {
   typedef std::pair<std::set<KeyFrame*>, int> ConsistentGroup;
 
   typedef std::map<
-      KeyFrame*, Sim3, std::less<KeyFrame*>,
-      Eigen::aligned_allocator<std::pair<const KeyFrame*, Sim3> > >
+      KeyFrame*, Sim3d, std::less<KeyFrame*>,
+      Eigen::aligned_allocator<std::pair<const KeyFrame*, Sim3d> > >
       KeyFrameAndSim3;
+
+  typedef std::map<
+      KeyFrame*, Sophus::Sim3d, std::less<KeyFrame*>,
+      Eigen::aligned_allocator<std::pair<const KeyFrame*, Sophus::Sim3d> > >
+      KeyFrameAndSophusSim3;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -97,9 +103,11 @@ class LoopClosing {
   bool DetectLoop();
 
   bool ComputeSim3();
+  bool ComputeSophusSim3();
 
   // void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap);
   void SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap);
+  void SearchAndFuse(const KeyFrameAndSophusSim3& CorrectedPosesMap);
 
   void CorrectLoop();
 
@@ -137,7 +145,8 @@ class LoopClosing {
   std::vector<MapPoint*> current_matched_map_points_;
   std::vector<MapPoint*> loop_map_points_;
   Eigen::Matrix4d Scw_;
-  Sim3 sim3_Scw_;
+  Sim3d sim3_Scw_;
+  Sophus::Sim3d sophus_sim3_Scw_;
 
   long unsigned int last_loop_keyframe_id_;
 

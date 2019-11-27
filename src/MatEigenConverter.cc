@@ -84,7 +84,7 @@ Eigen::Matrix4d MatEigenConverter::Matrix_7_1_ToMatrix4d(
   return pose;
 }
 
-Eigen::Matrix4d MatEigenConverter::Sim3ToMatrix4d(const Sim3& sim) {
+Eigen::Matrix4d MatEigenConverter::Sim3ToMatrix4d(const Sim3d& sim) {
   Eigen::Matrix3d R = sim.rotation().toRotationMatrix();
   Eigen::Vector3d t = sim.translation();
   double s = sim.scale();

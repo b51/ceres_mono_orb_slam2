@@ -239,10 +239,70 @@ class Sim3ErrorTerm {
   const bool do_inverse_;
 };
 
+// Plus(x, delta) = [cos(|delta|), sin(|delta|) delta / |delta|] * x
+// with * being the quaternion multiplication operator. Here we assume
+// that the first element of the quaternion vector is the real (cos
+// theta) part.
+class Sim3Parameterization : public ceres::LocalParameterization {
+ public:
+  virtual ~Sim3Parameterization() {}
+  bool Plus(const double* x,
+            const double* delta,
+            double* x_plus_delta) const override;
+  bool ComputeJacobian(const double* x, double* jacobian) const override;
+  int GlobalSize() const override { return 7; }
+  int LocalSize() const override { return 7; }
+};
+
+class SophusEssentialGraphErrorTerm {
+ public:
+  SophusEssentialGraphErrorTerm(
+      const Sophus::Sim3d& Tab,
+      const Eigen::Matrix<double, 7, 7>& sqrt_information)
+      : Tab_(Tab), sqrt_information_(sqrt_information) {}
+
+  template <typename T>
+  bool operator()(const T* const t_a_ptr, const T* const t_b_ptr,
+                  T* residuals_ptr) const {
+    Eigen::Map<const Eigen::Matrix<T, 7, 1>> t_a_frame(t_a_ptr);
+    Eigen::Map<const Eigen::Matrix<T, 7, 1>> t_b_frame(t_b_ptr);
+
+    Sophus::Sim3<T> T_a_frame = Sophus::Sim3<T>::exp(t_a_frame);
+    Sophus::Sim3<T> T_b_frame = Sophus::Sim3<T>::exp(t_b_frame);
+    // Eigen::Map<const Sophus::Sim3<T>> T_a_frame(t_a_ptr);
+    // Eigen::Map<const Sophus::Sim3<T>> T_b_frame(t_b_ptr);
+
+    Eigen::Map<Eigen::Matrix<T, 7, 1>> residuals(residuals_ptr);
+
+    Sophus::Sim3<T> T_frame_a = T_a_frame.inverse();
+    Sophus::Sim3<T> Tba = T_b_frame * T_frame_a;
+
+    residuals = (Tab_.cast<T>() * Tba).log();
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
+    return true;
+  }
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  static ceres::CostFunction* Create(
+      const Sophus::Sim3d& Tab,
+      const Eigen::Matrix<double, 7, 7>& sqrt_information) {
+    return new ceres::AutoDiffCostFunction<SophusEssentialGraphErrorTerm,
+                                           /* residual numbers */ 7,
+                                           /* first optimize numbers */ 7,
+                                           /* second optimize numbers */ 7>(
+        new SophusEssentialGraphErrorTerm(Tab, sqrt_information));
+  }
+
+ private:
+  const Sophus::Sim3d Tab_;
+  const Eigen::Matrix<double, 7, 7> sqrt_information_;
+};
+
 // TODO(b51): get residual to Sim3 mode
 class EssentialGraphErrorTerm {
  public:
-  EssentialGraphErrorTerm(const Sim3& Sab,
+  EssentialGraphErrorTerm(const Sim3d& Sab,
                           const Eigen::Matrix<double, 6, 6>& sqrt_information)
       : Sab_(Sab), sqrt_information_(sqrt_information) {}
 
@@ -303,7 +363,7 @@ class EssentialGraphErrorTerm {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   static ceres::CostFunction* Create(
-      const Sim3& Sab, const Eigen::Matrix<double, 6, 6>& sqrt_information) {
+      const Sim3d& Sab, const Eigen::Matrix<double, 6, 6>& sqrt_information) {
     return new ceres::AutoDiffCostFunction<EssentialGraphErrorTerm,
                                            /* residual numbers */ 6,
                                            /* first optimize numbers */ 3,
@@ -316,7 +376,7 @@ class EssentialGraphErrorTerm {
   }
 
  private:
-  const Sim3 Sab_;
+  const Sim3d Sab_;
   const Eigen::Matrix<double, 6, 6> sqrt_information_;
 };
 
@@ -372,6 +432,13 @@ class CeresOptimizer {
                           std::vector<MapPoint*>& matches, double* scale12,
                           Eigen::Matrix3d& R12, Eigen::Vector3d& t12,
                           const float th2, const bool bFixScale);
+
+  void static SophusOptimizeEssentialGraph(
+      Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
+      const LoopClosing::KeyFrameAndSophusSim3& keyframes_non_corrected_sim3,
+      const LoopClosing::KeyFrameAndSophusSim3& keyframes_corrected_sim3,
+      const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
+      const bool& is_fixed_scale);
 
   void static OptimizeEssentialGraph(
       Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
