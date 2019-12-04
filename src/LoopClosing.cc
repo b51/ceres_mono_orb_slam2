@@ -74,7 +74,7 @@ void LoopClosing::Run() {
       if (DetectLoop()) {
         // Compute similarity transformation [sR|t]
         // In the stereo/RGBD case s=1
-        if (ComputeSim3()) {
+        if (ComputeSophusSim3()) {
           // Perform loop fusion and pose graph optimization
           CorrectLoop();
         }
@@ -227,7 +227,7 @@ bool LoopClosing::DetectLoop() {
   return false;
 }
 
-bool LoopClosing::ComputeSim3() {
+bool LoopClosing::ComputeSophusSim3() {
   // For each consistent loop candidate we try to compute a Sim3
 
   const int n_initial_candidates = enough_consistent_candidates_.size();
@@ -336,25 +336,17 @@ bool LoopClosing::ComputeSim3() {
         // LOG(INFO) << " sim3 optimized R: \n" << R;
         // LOG(INFO) << " sim3 optimized t: \n" << t.transpose();
 
-        // g2o::Sim3 gScm(_R, _t, s);
-        Sim3d gScm(s, R, t);
         Sophus::Sim3d sophus_gScm(Sophus::RxSO3d(s, R), t);
 
         // If optimization is succesful stop ransacs and continue
         if (n_inliers >= 20) {
           is_match = true;
           matched_keyframe_ = keyframe;
-          // g2o::Sim3 gSmw(Converter::toMatrix3d(keyframe->GetRotation()),
-          //                Converter::toVector3d(keyframe->GetTranslation()),
-          //                1.0);
-          // g2oScw_ = gScm * gSmw;
-          Sim3d gSmw(1.0, keyframe->GetRotation(), keyframe->GetTranslation());
           Sophus::Sim3d sophus_gSmw(
               Sophus::RxSO3d(1.0, keyframe->GetRotation()),
               keyframe->GetTranslation());
-          sim3_Scw_ = gScm * gSmw;
           sophus_sim3_Scw_ = sophus_gScm * sophus_gSmw;
-          Scw_ = MatEigenConverter::Sim3ToMatrix4d(sim3_Scw_);
+          Scw_ = sophus_sim3_Scw_.matrix();
 
           current_matched_map_points_ = map_point_matches;
           break;
@@ -456,14 +448,11 @@ void LoopClosing::CorrectLoop() {
   current_connected_keyframes_.push_back(current_keyframe_);
 
   // KeyFrameAndSim3 corrected_sim3, non_corrected_sim3;
-  // Sim3d sim3_Scw(sim3_Scw_.scale(), sim3_Scw_.rotation(),
-  //               sim3_Scw_.translation());
-  // corrected_sim3[current_keyframe_] = sim3_Scw;
 
   KeyFrameAndSophusSim3 sophus_corrected_sim3, sophus_non_corrected_sim3;
   Sophus::Sim3d sophus_sim3_Scw(
       Sophus::RxSO3d(sophus_sim3_Scw_.scale(),
-                     sophus_sim3_Scw_.quaternion().toRotationMatrix()),
+                     sophus_sim3_Scw_.rotationMatrix()),
       sophus_sim3_Scw_.translation());
   sophus_corrected_sim3[current_keyframe_] = sophus_sim3_Scw;
 
@@ -473,8 +462,8 @@ void LoopClosing::CorrectLoop() {
     // Get Map Mutex
     unique_lock<mutex> lock(map_->mutex_map_update_);
 
-    for (vector<KeyFrame*>::iterator vit = current_connected_keyframes_.begin(),
-                                     vend = current_connected_keyframes_.end();
+    for (auto vit = current_connected_keyframes_.begin(),
+              vend = current_connected_keyframes_.end();
          vit != vend; vit++) {
       KeyFrame* pKFi = *vit;
 
@@ -484,36 +473,26 @@ void LoopClosing::CorrectLoop() {
         Eigen::Matrix4d Tic = Tiw * Twc;
         Eigen::Matrix3d Ric = Tic.block<3, 3>(0, 0);
         Eigen::Vector3d tic = Tic.block<3, 1>(0, 3);
-        // Sim3d Sic(1.0, Ric, tic);
-        // Sim3d corrected_Siw = Sic * sim3_Scw_;
 
         Sophus::Sim3d sophus_Sic(Sophus::RxSO3d(1.0, Ric), tic);
         Sophus::Sim3d sophus_corrected_Siw = sophus_Sic * sophus_sim3_Scw_;
         // Pose corrected with the Sim3 of the loop closure
-        // corrected_sim3[pKFi] = corrected_Siw;
         sophus_corrected_sim3[pKFi] = sophus_corrected_Siw;
       }
 
       Eigen::Matrix3d Riw = Tiw.block<3, 3>(0, 0);
       Eigen::Vector3d tiw = Tiw.block<3, 1>(0, 3);
-      // Sim3d Siw(1.0, Riw, tiw);
       Sophus::Sim3d sophus_Siw(Sophus::RxSO3d(1.0, Riw), tiw);
       // Pose without correction
-      // non_corrected_sim3[pKFi] = Siw;
       sophus_non_corrected_sim3[pKFi] = sophus_Siw;
     }
 
     // Correct all MapPoints obsrved by current keyframe and neighbors, so that
     // they align with the other side of the loop
-    // for (KeyFrameAndSim3::iterator mit = corrected_sim3.begin(),
-    //                                mend = corrected_sim3.end();
     for (auto mit = sophus_corrected_sim3.begin(),
               mend = sophus_corrected_sim3.end();
          mit != mend; mit++) {
       KeyFrame* pKFi = mit->first;
-      // Sim3d corrected_Siw = mit->second;
-      // Sim3d corrected_Swi = corrected_Siw.inverse();
-      // Sim3d Siw = non_corrected_sim3[pKFi];
 
       Sophus::Sim3d sophus_corrected_Siw = mit->second;
       Sophus::Sim3d sophus_corrected_Swi = sophus_corrected_Siw.inverse();
@@ -535,14 +514,7 @@ void LoopClosing::CorrectLoop() {
         // Project with non-corrected pose and project back with corrected pose
         Eigen::Vector3d P3Dw = pMPi->GetWorldPos();
 
-        Eigen::Matrix<double, 3, 1> corrected_P3Dw =
-            sophus_Siw.scale() * (sophus_Siw.quaternion() * P3Dw) +
-            sophus_Siw.translation();
-        corrected_P3Dw =
-            sophus_corrected_Swi.scale() *
-                (sophus_corrected_Swi.quaternion() * corrected_P3Dw) +
-            sophus_corrected_Swi.translation();
-        // sophus_corrected_Swi.map(sophus_Siw.map(P3Dw));
+        Eigen::Matrix<double, 3, 1> corrected_P3Dw = sophus_corrected_Swi * (sophus_Siw * P3Dw);
 
         pMPi->SetWorldPos(corrected_P3Dw);
         pMPi->corrected_by_keyframe_ = current_keyframe_->id_;
@@ -552,10 +524,7 @@ void LoopClosing::CorrectLoop() {
 
       // Update keyframe pose with corrected Sim3. First transform Sim3 to SE3
       // (scale translation)
-      // Eigen::Matrix3d eigR = corrected_Siw.rotation().toRotationMatrix();
-      // Eigen::Vector3d eigt = corrected_Siw.translation();
-      // double s = corrected_Siw.scale();
-      Eigen::Matrix3d eigR = sophus_corrected_Siw.quaternion().toRotationMatrix();
+      Eigen::Matrix3d eigR = sophus_corrected_Siw.rotationMatrix();
       Eigen::Vector3d eigt = sophus_corrected_Siw.translation();
       double s = sophus_corrected_Siw.scale();
 
@@ -565,6 +534,7 @@ void LoopClosing::CorrectLoop() {
       eig_corrected_Tiw.block<3, 3>(0, 0) = eigR;
       eig_corrected_Tiw.block<3, 1>(0, 3) = eigt;
 
+      // Eigen::Matrix4d eig_corrected_Tiw = sophus_corrected_Siw.matrix();
       pKFi->SetPose(eig_corrected_Tiw);
 
       // Make sure connections are updated
@@ -622,9 +592,6 @@ void LoopClosing::CorrectLoop() {
   }
 
   // Optimize graph
-  // CeresOptimizer::OptimizeEssentialGraph(
-  //     map_, matched_keyframe_, current_keyframe_, non_corrected_sim3,
-  //     corrected_sim3, loop_connections, is_fix_scale_);
   CeresOptimizer::SophusOptimizeEssentialGraph(
       map_, matched_keyframe_, current_keyframe_, sophus_non_corrected_sim3,
       sophus_corrected_sim3, loop_connections, is_fix_scale_);
@@ -656,9 +623,9 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndSophusSim3& CorrectedPosesMap) 
     KeyFrame* keyframe = mit->first;
 
     Sophus::Sim3d Scw = mit->second;
-    Eigen::Matrix4d eig_Scw = Eigen::Matrix4d::Identity();
-    eig_Scw.block<3, 3>(0, 0) = Scw.scale() * Scw.quaternion().toRotationMatrix();
-    eig_Scw.block<3, 1>(0, 3) = Scw.translation();
+    Eigen::Matrix4d eig_Scw = Scw.matrix();
+    // eig_Scw.block<3, 3>(0, 0) = Scw.scale() * Scw.rotationMatrix();
+    // eig_Scw.block<3, 1>(0, 3) = Scw.translation();
 
     vector<MapPoint*> replace_map_points(loop_map_points_.size(),
                                          static_cast<MapPoint*>(nullptr));
@@ -676,38 +643,6 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndSophusSim3& CorrectedPosesMap) 
   }
 }
 
-
-// void LoopClosing::SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap) {
-void LoopClosing::SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap) {
-  ORBmatcher matcher(0.8);
-
-  for (KeyFrameAndSim3::const_iterator mit = CorrectedPosesMap.begin(),
-                                       mend = CorrectedPosesMap.end();
-       mit != mend; mit++) {
-    KeyFrame* keyframe = mit->first;
-
-    // g2o::Sim3 g2oScw = mit->second;
-    // cv::Mat cvScw = Converter::toCvMat(g2oScw);
-    Sim3d Scw = mit->second;
-    Eigen::Matrix4d eig_Scw = Eigen::Matrix4d::Identity();
-    eig_Scw.block<3, 3>(0, 0) = Scw.scale() * Scw.rotation().toRotationMatrix();
-    eig_Scw.block<3, 1>(0, 3) = Scw.translation();
-
-    vector<MapPoint*> replace_map_points(loop_map_points_.size(),
-                                         static_cast<MapPoint*>(nullptr));
-    matcher.Fuse(keyframe, eig_Scw, loop_map_points_, 4, replace_map_points);
-
-    // Get Map Mutex
-    unique_lock<mutex> lock(map_->mutex_map_update_);
-    const int nLP = loop_map_points_.size();
-    for (int i = 0; i < nLP; i++) {
-      MapPoint* replace_map_point = replace_map_points[i];
-      if (replace_map_point) {
-        replace_map_point->Replace(loop_map_points_[i]);
-      }
-    }
-  }
-}
 
 void LoopClosing::RequestReset() {
   {

@@ -84,16 +84,6 @@ Eigen::Matrix4d MatEigenConverter::Matrix_7_1_ToMatrix4d(
   return pose;
 }
 
-Eigen::Matrix4d MatEigenConverter::Sim3ToMatrix4d(const Sim3d& sim) {
-  Eigen::Matrix3d R = sim.rotation().toRotationMatrix();
-  Eigen::Vector3d t = sim.translation();
-  double s = sim.scale();
-  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-  T.block<3, 3>(0, 0) = s * R;
-  T.block<3, 1>(0, 3) = t;
-  return T;
-}
-
 std::vector<cv::Mat> MatEigenConverter::toDescriptorVector(
     const cv::Mat& Descriptors) {
   std::vector<cv::Mat> vDesc;

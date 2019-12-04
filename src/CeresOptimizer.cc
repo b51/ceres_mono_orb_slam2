@@ -24,46 +24,39 @@ namespace ORB_SLAM2 {
 bool Sim3Parameterization::Plus(const double* x,
                                 const double* delta,
                                 double* x_plus_delta) const {
-  Eigen::Map<const Eigen::Matrix<double, 7, 1> > sim3_x(x);
-  LOG(INFO) << "Plus 0";
-  Eigen::Map<const Eigen::Matrix<double, 7, 1> > sim3_delta(x);
-  LOG(INFO) << "Plus 1";
+  Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_x(x);
+  Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_delta(delta);
   Eigen::Map<Eigen::Matrix<double, 7, 1> > updated(x_plus_delta);
-  updated = (Sophus::Sim3d::exp(sim3_delta) * Sophus::Sim3d::exp(sim3_x)).log();
-  // Eigen::Map<const Sophus::Sim3d> sim3_x(x);
-  // Eigen::Map<const Sophus::Sim3d> sim3_delta(delta);
-  // Sophus::Sim3d updated = sim3_delta * sim3_x;
-  LOG(INFO) << "Plus 2";
-  /*
-  Eigen::Matrix<double, 7, 1> sim3_x;
-  sim3_x << x[0], x[1], x[2], x[3], x[4], x[5], x[6];
-  Eigen::Matrix<double, 7, 1> sim3_delta;
-  sim3_delta << delta[0], delta[1], delta[2], delta[3], delta[4], delta[5],
-      delta[6];
-  Sophus::Sim3d S_x = Sophus::Sim3d::exp(sim3_x);
-  Sophus::Sim3d S_delta = Sophus::Sim3d::exp(sim3_delta);
-  Eigen::Matrix<double, 7, 1> updated = (S_delta * S_x).log();
-  for (int i = 0; i < 7; i++) x_plus_delta[i] = updated[i];
-  */
+
+  Sophus::Sim3d sim_x = Sophus::Sim3d::exp(lie_x);
+  Sophus::Sim3d sim_delta = Sophus::Sim3d::exp(lie_delta);
+  updated = (sim_x * sim_delta).log();
+
+  // double jacobian[49];
+  // ComputeJacobian(x, jacobian);
+  // Eigen::Map<Eigen::Matrix<double, 7, 7> > Jr_x(jacobian);
+  // updated = lie_x + Jr_x * lie_delta;
   return true;
 }
 
 bool Sim3Parameterization::ComputeJacobian(const double* x,
                                            double* jacobian) const {
-  LOG(INFO) << "Jacobian 0";
-  Eigen::Map<const Eigen::Matrix<double, 7, 1> > sim3_x(x);
-  // Eigen::Map<const Sophus::Sim3d> sim3_x(x);
-  LOG(INFO) << "Jacobian 1";
+  Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_x(x);
   Eigen::Map<Eigen::Matrix<double, 7, 7>> J(jacobian);
-  J = Sophus::Sim3d::exp(sim3_x).Adj();
-  /*
-  Eigen::Matrix<double, 7, 1> sim3_x;
-  sim3_x << x[0], x[1], x[2], x[3], x[4], x[5], x[6];
-  Eigen::Matrix<double, 7, 7> J;
-  J = Sim3d::exp(sim3_x).adjoint();
-  for (int i = 0; i < 7; i++)
-    for (int j = 0; j < 7; j++) jacobian[i * 7 + j] = J(i, j);
-  */
+
+  Eigen::Matrix<double, 7, 7> adj = Eigen::Matrix<double, 7, 7>::Zero();
+  // double sigma = lie_x[6];
+  // Eigen::Vector3d rho = lie_x.block<3, 1>(0, 0);
+  // Eigen::Matrix3d phi_hat = Sophus::SO3d::hat(lie_x.block<3, 1>(3, 0));
+  // Eigen::Matrix3d rho_hat = Sophus::SO3d::hat(rho);
+  // adj.block<3, 3>(0, 0) = sigma * phi_hat;
+  // adj.block<3, 3>(0, 3) = rho_hat;
+  // adj.block<3, 1>(0, 6) = -rho;
+  // adj.block<3, 3>(3, 3) = phi_hat;
+  // adj(6, 6) = 0.;
+
+  Eigen::Matrix<double, 7, 7> I = Eigen::Matrix<double, 7, 7>::Identity();
+  J = I + 0.5 * adj + (1./12.) * (adj * adj);
   return true;
 }
 
@@ -786,8 +779,6 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
 
   const unsigned int max_keyframe_id = map->GetMaxKFid();
 
-  // std::vector<Sophus::Sim3d, Eigen::aligned_allocator<Sophus::Sim3d>> Scws(
-  //     max_keyframe_id + 1);
   std::vector<Sophus::Sim3d, Eigen::aligned_allocator<Sophus::Sim3d>>
       corrected_Swcs(max_keyframe_id + 1);
 
@@ -802,30 +793,23 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
 
     auto it = keyframes_corrected_sim3.find(keyframe);
     if (it != keyframes_corrected_sim3.end()) {
-      // Scws[id_i] = it->second;
-      // Scw_datas[id_i] << it->second.data()[0], it->second.data()[1],
-      //     it->second.data()[2], it->second.data()[3], it->second.data()[4],
-      //     it->second.data()[5], it->second.data()[6];
-      Scw_datas[id_i] << it->second.log();
+      Scw_datas[id_i] = it->second.log();
     } else {
       Eigen::Matrix3d Rcw = keyframe->GetRotation();
       Eigen::Vector3d tcw = keyframe->GetTranslation();
       Sophus::Sim3d Siw(Sophus::RxSO3d(1.0, Rcw), tcw);
-      // Scws[id_i] = Siw;
-      Scw_datas[id_i] << Siw.log();
+      Scw_datas[id_i] = Siw.log();
     }
-    LOG(INFO) << "id_i " << id_i << " before: \n" << Scw_datas[id_i].transpose();
 
-    // problem.AddParameterBlock(Scws[id_i].data(), 7,
+    // std::cout << id_i << " " <<  Scw_datas[id_i].transpose() << std::endl;
+
     problem.AddParameterBlock(Scw_datas[id_i].data(), 7,
                               sim3_local_parameterization);
     if (keyframe == loop_keyframe) {
-      // problem.SetParameterBlockConstant(Scws[id_i].data());
+      LOG(INFO) << "constant keyframe: " << keyframe->id_;
       problem.SetParameterBlockConstant(Scw_datas[id_i].data());
     }
   }  // end of all_keyframes loop
-
-  LOG(INFO) << " 1 ";
 
   std::set<std::pair<long unsigned int, long unsigned int>> inserted_edges;
 
@@ -834,7 +818,6 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
     KeyFrame* keyframe = it->first;
     const long unsigned int id_i = keyframe->id_;
     const std::set<KeyFrame*>& connected_keyframes = it->second;
-    // const Sophus::Sim3d Siw = Scws[id_i];
     const Sophus::Sim3d Siw = Sophus::Sim3d::exp(Scw_datas[id_i]);
     const Sophus::Sim3d Swi = Siw.inverse();
 
@@ -845,22 +828,21 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
           keyframe->GetWeight(*it_connections) < min_weight)
         continue;
 
-      // const Sophus::Sim3d Sjw = Scws[id_j];
       const Sophus::Sim3d Sjw = Sophus::Sim3d::exp(Scw_datas[id_j]);
       const Sophus::Sim3d Sji = Sjw * Swi;
 
+      // std::cout << "Sji: " << Sji.log().transpose()
+      //           << " " << id_j << " " << id_i << std::endl;
+
       ceres::CostFunction* cost_function =
+          // EssentialGraphErrorTerm::Create(Sji, sqrt_information);
           SophusEssentialGraphErrorTerm::Create(Sji, sqrt_information);
-      // problem.AddResidualBlock(cost_function, nullptr, Scws[id_j].data(),
-      //                          Scws[id_i].data());
       problem.AddResidualBlock(cost_function, nullptr, Scw_datas[id_j].data(),
                                Scw_datas[id_i].data());
 
       inserted_edges.insert(std::make_pair(min(id_i, id_j), max(id_i, id_j)));
     }
   }  // end of loop connections
-
-  LOG(INFO) << " 2 ";
 
   // Set normal keyframes
   for (size_t i = 0; i < all_keyframes.size(); i++) {
@@ -873,7 +855,6 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
     if (it_i != keyframes_non_corrected_sim3.end()) {
       Swi = (it_i->second).inverse();
     } else {
-      // Swi = Scws[id_i].inverse();
       Swi = Sophus::Sim3d::exp(Scw_datas[id_i]).inverse();
     }
     KeyFrame* parent_keyframe = keyframe->GetParent();
@@ -886,14 +867,16 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
       if (it_j != keyframes_non_corrected_sim3.end()) {
         Sjw = it_j->second;
       } else {
-        // Sjw = Scws[id_j];
         Sjw = Sophus::Sim3d::exp(Scw_datas[id_j]);
       }
       Sophus::Sim3d Sji = Sjw * Swi;
 
-      ceres::CostFunction* cost_function = SophusEssentialGraphErrorTerm::Create(Sji, sqrt_information);
-      // problem.AddResidualBlock(cost_function, nullptr, Scws[id_j].data(),
-      //                          Scws[id_i].data());
+      // std::cout << "Sji: " << Sji.log().transpose()
+      //           << " " << id_j << " " << id_i << std::endl;
+
+      ceres::CostFunction* cost_function =
+          // EssentialGraphErrorTerm::Create(Sji, sqrt_information);
+          SophusEssentialGraphErrorTerm::Create(Sji, sqrt_information);
       problem.AddResidualBlock(cost_function, nullptr, Scw_datas[id_j].data(),
                                Scw_datas[id_i].data());
     }
@@ -908,18 +891,19 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
         if (it_l != keyframes_non_corrected_sim3.end()) {
           Slw = it_l->second;
         } else {
-          // Slw = Scws[local_loop_keyframe->id_];
           Slw = Sophus::Sim3d::exp(Scw_datas[local_loop_keyframe->id_]);
         }
         Sophus::Sim3d Sli = Slw * Swi;
 
+        // std::cout << "Sji: " << Sli.log().transpose()
+        //           << " " << local_loop_keyframe->id_ << " " << id_i << std::endl;
+
         ceres::CostFunction* cost_function =
+            // EssentialGraphErrorTerm::Create(Sli, sqrt_information);
             SophusEssentialGraphErrorTerm::Create(Sli, sqrt_information);
         problem.AddResidualBlock(cost_function, nullptr,
                                  Scw_datas[local_loop_keyframe->id_].data(),
                                  Scw_datas[id_i].data());
-                                 // Scws[local_loop_keyframe->id_].data(),
-                                 // Scws[id_i].data());
       }
     }
 
@@ -944,48 +928,53 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
           Snw = it_n->second;
         else
           Snw = Sophus::Sim3d::exp(Scw_datas[keyframe_n->id_]);
-          // Snw = Scws[keyframe_n->id_];
 
         Sophus::Sim3d Sni = Snw * Swi;
 
+        // std::cout << "Sji: " << Sni.log().transpose()
+        //           << " " << keyframe_n->id_ << " " << id_i << std::endl;
+
         ceres::CostFunction* cost_function =
+            // EssentialGraphErrorTerm::Create(Sni, sqrt_information);
             SophusEssentialGraphErrorTerm::Create(Sni, sqrt_information);
         problem.AddResidualBlock(cost_function, nullptr,
                                  Scw_datas[keyframe_n->id_].data(),
                                  Scw_datas[id_i].data());
-                                 // Scws[keyframe_n->id_].data(),
-                                 // Scws[id_i].data());
       }
     }
   }  // end of for loop all_keyframes
 
-  LOG(INFO) << " 3 ";
+  // options.dynamic_sparsity = true;
+  // options.sparse_linear_algebra_library_type = ceres::SUITE_SPARSE;
+  // options.minimizer_type = ceres::TRUST_REGION;
+  // options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+  // options.trust_region_strategy_type = ceres::DOGLEG;
+  options.minimizer_progress_to_stdout = true;
+  // options.dogleg_type = ceres::SUBSPACE_DOGLEG;
 
   ceres::Solve(options, &problem, &summary);
+  LOG(INFO) << summary.FullReport();
 
   unique_lock<mutex> lock(map->mutex_map_update_);
-
-  LOG(INFO) << " 4 ";
 
   // SE3 Pose Recovering. Sim3d:[sR t;0 1] -> SE3:[R t/s;0 1]
   for (size_t i = 0; i < all_keyframes.size(); i++) {
     KeyFrame* keyframe = all_keyframes[i];
     const int id_i = keyframe->id_;
-    // corrected_Swcs[id_i] = Scws[id_i].inverse();
-    // Eigen::Matrix3d R = Scws[id_i].rotationMatrix();
-    // Eigen::Vector3d t = Scws[id_i].translation();
-    // double s = Scws[id_i].scale();
+    // std::cout << id_i << " " <<  Scw_datas[id_i].transpose() << std::endl;
+
     Sophus::Sim3d sim3_corrected_Scw = Sophus::Sim3d::exp(Scw_datas[id_i]);
     corrected_Swcs[id_i] = sim3_corrected_Scw.inverse();
     Eigen::Matrix3d R = sim3_corrected_Scw.rotationMatrix();
     Eigen::Vector3d t = sim3_corrected_Scw.translation();
     double s = sim3_corrected_Scw.scale();
-    t = (1. / s) * t;
+
     Eigen::Matrix4d Tiw = Eigen::Matrix4d::Identity();
+    t = (1. / s) * t;
     Tiw.block<3, 3>(0, 0) = R;
     Tiw.block<3, 1>(0, 3) = t;
+    // Eigen::Matrix4d Tiw = sim3_corrected_Scw.matrix();
     keyframe->SetPose(Tiw);
-    LOG(INFO) << "id_i " << id_i << " after: \n" << Scw_datas[id_i].transpose();
   }
   // Correct points. Transform to "non-optimized" reference keyframe pose and
   // transform back with optimized pose
@@ -1008,237 +997,8 @@ void CeresOptimizer::SophusOptimizeEssentialGraph(
     Eigen::Vector3d P3Dc =
         Srw.scale() * (Srw.quaternion() * P3Dw) + Srw.translation();
     Eigen::Vector3d corrected_P3Dw =
+        // corrected_Swr * P3Dc;
         corrected_Swr.scale() * (corrected_Swr.quaternion() * P3Dc) +
-        corrected_Swr.translation();
-
-    map_point->SetWorldPos(corrected_P3Dw);
-    map_point->UpdateNormalAndDepth();
-  }
-}
-
-// TODO(b51): This function need to review again
-void CeresOptimizer::OptimizeEssentialGraph(
-    Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
-    const LoopClosing::KeyFrameAndSim3& keyframes_non_corrected_sim3,
-    const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
-    const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
-    const bool& is_fixed_scale) {
-
-  ceres::Problem problem;
-  ceres::LocalParameterization* quaternion_local_parameterization =
-      new ceres::EigenQuaternionParameterization;
-  ceres::Solver::Options options;
-  options.max_num_iterations = 100;
-  options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
-  ceres::Solver::Summary summary;
-
-  int min_weight = 100;
-  const Eigen::Matrix<double, 6, 6> sqrt_information =
-      Eigen::Matrix<double, 6, 6>::Identity();
-
-  const std::vector<KeyFrame*> all_keyframes = map->GetAllKeyFrames();
-  const std::vector<MapPoint*> all_map_points = map->GetAllMapPoints();
-
-  const unsigned int max_keyframe_id = map->GetMaxKFid();
-
-  std::vector<Sim3d, Eigen::aligned_allocator<Sim3d>> Scws(max_keyframe_id + 1);
-  std::vector<Sim3d, Eigen::aligned_allocator<Sim3d>> corrected_Swcs(
-      max_keyframe_id + 1);
-
-  // Set all keyframe
-  for (size_t i = 0; i < all_keyframes.size(); i++) {
-    KeyFrame* keyframe = all_keyframes[i];
-    if (keyframe->isBad()) continue;
-
-    const int id_i = keyframe->id_;
-
-    auto it = keyframes_corrected_sim3.find(keyframe);
-    if (it != keyframes_corrected_sim3.end()) {
-      Scws[id_i] = it->second;
-    } else {
-      Eigen::Matrix3d Rcw = keyframe->GetRotation();
-      Eigen::Vector3d tcw = keyframe->GetTranslation();
-      Sim3d Siw(1.0, Rcw, tcw);
-      Scws[id_i] = Siw;
-    }
-    problem.AddParameterBlock(Scws[id_i].translation().data(), 3);
-    problem.AddParameterBlock(Scws[id_i].rotation().coeffs().data(), 4,
-                              quaternion_local_parameterization);
-    problem.AddParameterBlock(&Scws[id_i].scale(), 1);
-
-    if (keyframe == loop_keyframe) {
-      problem.SetParameterBlockConstant(Scws[id_i].translation().data());
-      problem.SetParameterBlockConstant(Scws[id_i].rotation().coeffs().data());
-      problem.SetParameterBlockConstant(&Scws[id_i].scale());
-    }
-  }  // end of all_keyframes loop
-
-  std::set<std::pair<long unsigned int, long unsigned int>> inserted_edges;
-
-  // Set Loop connections
-  for (auto it = loop_connections.begin(); it != loop_connections.end(); it++) {
-    KeyFrame* keyframe = it->first;
-    const long unsigned int id_i = keyframe->id_;
-    const std::set<KeyFrame*>& connected_keyframes = it->second;
-    const Sim3d Siw = Scws[id_i];
-    const Sim3d Swi = Siw.inverse();
-
-    for (auto it_connections = connected_keyframes.begin();
-         it_connections != connected_keyframes.end(); it_connections++) {
-      const long unsigned int id_j = (*it_connections)->id_;
-      if ((id_i != current_keyframe->id_ || id_j != loop_keyframe->id_) &&
-          keyframe->GetWeight(*it_connections) < min_weight)
-        continue;
-
-      const Sim3d Sjw = Scws[id_j];
-      const Sim3d Sji = Sjw * Swi;
-
-      ceres::CostFunction* cost_function =
-          EssentialGraphErrorTerm::Create(Sji, sqrt_information);
-      problem.AddResidualBlock(
-          cost_function, nullptr, Scws[id_j].translation().data(),
-          Scws[id_j].rotation().coeffs().data(), &(Scws[id_j].scale()),
-          Scws[id_i].translation().data(),
-          Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-
-      inserted_edges.insert(std::make_pair(min(id_i, id_j), max(id_i, id_j)));
-    }
-  }  // end of loop connections
-
-  // Set normal keyframes
-  for (size_t i = 0; i < all_keyframes.size(); i++) {
-    KeyFrame* keyframe = all_keyframes[i];
-
-    const int id_i = keyframe->id_;
-    Sim3d Swi;
-
-    auto it_i = keyframes_non_corrected_sim3.find(keyframe);
-    if (it_i != keyframes_non_corrected_sim3.end()) {
-      Swi = (it_i->second).inverse();
-    } else {
-      Swi = Scws[id_i].inverse();
-    }
-    KeyFrame* parent_keyframe = keyframe->GetParent();
-    if (parent_keyframe) {
-      long unsigned int id_j = parent_keyframe->id_;
-
-      Sim3d Sjw;
-
-      auto it_j = keyframes_non_corrected_sim3.find(parent_keyframe);
-      if (it_j != keyframes_non_corrected_sim3.end()) {
-        Sjw = it_j->second;
-      } else {
-        Sjw = Scws[id_j];
-      }
-      Sim3d Sji = Sjw * Swi;
-
-      ceres::CostFunction* cost_function = EssentialGraphErrorTerm::Create(Sji, sqrt_information);
-      problem.AddResidualBlock(
-          cost_function, nullptr, Scws[id_j].translation().data(),
-          Scws[id_j].rotation().coeffs().data(), &(Scws[id_j].scale()),
-          Scws[id_i].translation().data(),
-          Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-    }
-
-    // Set for loop edges
-    const std::set<KeyFrame*> loop_edges = keyframe->GetLoopEdges();
-    for (auto it = loop_edges.begin(); it != loop_edges.end(); it++) {
-      KeyFrame* local_loop_keyframe = *it;
-      if (local_loop_keyframe->id_ < keyframe->id_) {
-        Sim3d Slw;
-        auto it_l = keyframes_non_corrected_sim3.find(local_loop_keyframe);
-        if (it_l != keyframes_non_corrected_sim3.end()) {
-          Slw = it_l->second;
-        } else {
-          Slw = Scws[local_loop_keyframe->id_];
-        }
-        Sim3d Sli = Slw * Swi;
-
-        ceres::CostFunction* cost_function =
-            EssentialGraphErrorTerm::Create(Sli, sqrt_information);
-        problem.AddResidualBlock(
-            cost_function, nullptr,
-            Scws[local_loop_keyframe->id_].translation().data(),
-            Scws[local_loop_keyframe->id_].rotation().coeffs().data(),
-            &(Scws[local_loop_keyframe->id_].scale()),
-            Scws[id_i].translation().data(),
-            Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-      }
-    }
-
-    // Covisibility keyframes
-    const std::vector<KeyFrame*> connected_keyframes =
-        keyframe->GetCovisiblesByWeight(min_weight);
-    for (auto it = connected_keyframes.begin(); it != connected_keyframes.end();
-         it++) {
-      KeyFrame* keyframe_n = *it;
-      if (keyframe_n && keyframe_n != parent_keyframe &&
-          !keyframe->hasChild(keyframe_n) && !loop_edges.count(keyframe_n)) {
-        if (!keyframe_n->isBad() && keyframe_n->id_ < keyframe->id_) {
-          if (inserted_edges.count(
-                  std::make_pair(min(keyframe->id_, keyframe_n->id_),
-                                 max(keyframe->id_, keyframe_n->id_))))
-            continue;
-        }
-
-        Sim3d Snw;
-        auto it_n = keyframes_non_corrected_sim3.find(keyframe_n);
-        if (it_n != keyframes_non_corrected_sim3.end())
-          Snw = it_n->second;
-        else
-          Snw = Scws[keyframe_n->id_];
-
-        Sim3d Sni = Snw * Swi;
-
-        ceres::CostFunction* cost_function =
-            EssentialGraphErrorTerm::Create(Sni, sqrt_information);
-        problem.AddResidualBlock(
-            cost_function, nullptr, Scws[keyframe_n->id_].translation().data(),
-            Scws[keyframe_n->id_].rotation().coeffs().data(),
-            &(Scws[keyframe_n->id_].scale()), Scws[id_i].translation().data(),
-            Scws[id_i].rotation().coeffs().data(), &Scws[id_i].scale());
-      }
-    }
-  }  // end of for loop all_keyframes
-  ceres::Solve(options, &problem, &summary);
-
-  unique_lock<mutex> lock(map->mutex_map_update_);
-
-  // SE3 Pose Recovering. Sim3d:[sR t;0 1] -> SE3:[R t/s;0 1]
-  for (size_t i = 0; i < all_keyframes.size(); i++) {
-    KeyFrame* keyframe = all_keyframes[i];
-    const int id_i = keyframe->id_;
-    corrected_Swcs[id_i] = Scws[id_i].inverse();
-    Eigen::Matrix3d R = Scws[id_i].rotation().toRotationMatrix();
-    Eigen::Vector3d t = Scws[id_i].translation();
-    double s = Scws[id_i].scale();
-    t = (1. / s) * t;
-    Eigen::Matrix4d Tiw = Eigen::Matrix4d::Identity();
-    Tiw.block<3, 3>(0, 0) = R;
-    Tiw.block<3, 1>(0, 3) = t;
-    keyframe->SetPose(Tiw);
-  }
-  // Correct points. Transform to "non-optimized" reference keyframe pose and
-  // transform back with optimized pose
-  for (size_t i = 0; i < all_map_points.size(); i++) {
-    MapPoint* map_point = all_map_points[i];
-
-    if (map_point->isBad()) continue;
-
-    int id_r;
-    if (map_point->corrected_by_keyframe_ == current_keyframe->id_) {
-      id_r = map_point->corrected_reference_;
-    } else {
-      KeyFrame* reference_keyframe = map_point->GetReferenceKeyFrame();
-      id_r = reference_keyframe->id_;
-    }
-    Sim3d Srw = Scws[id_r];
-    Sim3d corrected_Swr = corrected_Swcs[id_r];
-    Eigen::Vector3d P3Dw = map_point->GetWorldPos();
-    Eigen::Vector3d P3Dc =
-        Srw.scale() * (Srw.rotation() * P3Dw) + Srw.translation();
-    Eigen::Vector3d corrected_P3Dw =
-        corrected_Swr.scale() * (corrected_Swr.rotation() * P3Dc) +
         corrected_Swr.translation();
 
     map_point->SetWorldPos(corrected_P3Dw);
