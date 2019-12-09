@@ -251,52 +251,50 @@ class CERES_EXPORT Sim3Parameterization : public ceres::LocalParameterization {
   int LocalSize() const { return 7; }
 };
 
-class SophusEssentialGraphErrorTerm : public ceres::SizedCostFunction<7, 7, 7> {
+class EssentialGraphErrorTerm : public ceres::SizedCostFunction<7, 7, 7> {
  public:
-  SophusEssentialGraphErrorTerm(
+  EssentialGraphErrorTerm(
       const Sophus::Sim3d& Tji,
       const Eigen::Matrix<double, 7, 7>& sqrt_information)
       : Tji_(Tji), sqrt_information_(sqrt_information) {}
 
-  virtual bool Evaluate(double const* const* parameters, double* residuals_ptr,
-                        double** jacobians_ptr) const {
-    Eigen::Map<const Eigen::Matrix<double, 7, 1>> t_j_frame(parameters[0]);
-    Eigen::Map<const Eigen::Matrix<double, 7, 1>> t_i_frame(parameters[1]);
+  virtual bool Evaluate(double const* const* parameters, double* residuals,
+                        double** jacobians) const {
+    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie_j(*parameters);
+    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie_i(*(parameters + 1));
 
-    Sophus::Sim3d Tj = Sophus::Sim3d::exp(t_j_frame);
-    Sophus::Sim3d Ti = Sophus::Sim3d::exp(t_i_frame);
+    Sophus::Sim3d T_i = Sophus::Sim3d::exp(lie_i);
+    Sophus::Sim3d T_j = Sophus::Sim3d::exp(lie_j);
+    Sophus::Sim3d Tij_estimate = T_i * T_j.inverse();
+    Sophus::Sim3d err = Tij_estimate * Tji_;
+    Eigen::Matrix<double, 7, 1> err_;
+    err_ = err.log();
 
-    Eigen::Map<Eigen::Matrix<double, 7, 1>> residuals(residuals_ptr);
-    Sophus::Sim3d error = Tji_ * Ti * Tj.inverse();
-    residuals = error.log();
+    Eigen::Matrix<double, 7, 7> Jac_i;
+    Eigen::Matrix<double, 7, 7> Jac_j;
+    Eigen::Matrix<double, 7, 7> Jl = Eigen::Matrix<double, 7, 7>::Zero();
 
-    double sigma = residuals[6];
-    Eigen::Vector3d rho = residuals.block<3, 1>(0, 0);
-    Eigen::Matrix3d phi_hat = Sophus::SO3d::hat(residuals.block<3, 1>(3, 0));
-    Eigen::Matrix3d rho_hat = Sophus::SO3d::hat(rho);
-
-    Eigen::Matrix<double, 7, 7> adj = Eigen::Matrix<double, 7, 7>::Zero();
-    adj.block<3, 3>(0, 0) = sigma * phi_hat;
-    adj.block<3, 3>(0, 3) = rho_hat;
-    adj.block<3, 1>(0, 6) = -rho;
-    adj.block<3, 3>(3, 3) = phi_hat;
-    adj(6, 6) = 0.;
-
+    Jl.block<3, 3>(0, 0) = Sophus::RxSO3d::hat(err_.tail(4));
+    Jl.block<3, 3>(0, 3) = Sophus::SO3d::hat(err_.head(3));
+    Jl.block<3, 1>(0, 6) = -err_.head(3);
+    Jl.block<3, 3>(3, 3) = Sophus::SO3d::hat(err_.block<3, 1>(3, 0));
     Eigen::Matrix<double, 7, 7> I = Eigen::Matrix<double, 7, 7>::Identity();
-    Eigen::Matrix<double, 7, 7> Jr_error = I + 0.5 * adj + (1./12.) * (adj * adj);
+    Jl.noalias() = sqrt_information_ * (I - 0.5 * Jl + 1.0 / 12. * (Jl * Jl));
 
-    residuals.applyOnTheLeft(sqrt_information_);
+    err_ = sqrt_information_ * err_;
 
-    if (jacobians_ptr == nullptr) return true;
-    if (jacobians_ptr[0]) {
-      Eigen::Map<Eigen::Matrix<double, 7, 7>> Jacobian_j(jacobians_ptr[0]);
-      Jacobian_j = -Jr_error;
-      Jacobian_j.applyOnTheLeft(sqrt_information_);
-    }
-    if (jacobians_ptr[1]) {
-      Eigen::Map<Eigen::Matrix<double, 7, 7>> Jacobian_i(jacobians_ptr[1]);
-      Jacobian_i = Jr_error * (Tj * Ti.inverse()).Adj();
-      Jacobian_i.applyOnTheLeft(sqrt_information_);
+    Jac_i = Jl;
+    Jac_j = -Jl * Tij_estimate.Adj();
+    int k = 0;
+    for (int i = 0; i < 7; i++) {
+      residuals[i] = err_[i];
+      if (jacobians) {
+        for (int j = 0; j < 7; ++j) {
+          if (jacobians[0]) jacobians[0][k] = Jac_j(i, j);
+          if (jacobians[1]) jacobians[1][k] = Jac_i(i, j);
+          k++;
+        }
+      }
     }
     return true;
   }
@@ -306,45 +304,7 @@ class SophusEssentialGraphErrorTerm : public ceres::SizedCostFunction<7, 7, 7> {
   static ceres::CostFunction* Create(
       const Sophus::Sim3d& Tji,
       const Eigen::Matrix<double, 7, 7>& sqrt_information) {
-    return new SophusEssentialGraphErrorTerm(Tji, sqrt_information);
-  }
-
- private:
-  const Sophus::Sim3d Tji_;
-  const Eigen::Matrix<double, 7, 7> sqrt_information_;
-};
-
-class EssentialGraphErrorTerm {
- public:
-  EssentialGraphErrorTerm(const Sophus::Sim3d& Tji,
-                          const Eigen::Matrix<double, 7, 7>& sqrt_information)
-      : Tji_(Tji), sqrt_information_(sqrt_information) {}
-
-  template <typename T>
-  bool operator()(const T* const t_j_ptr, const T* const t_i_ptr,
-                  T* residuals_ptr) const {
-    Eigen::Map<const Eigen::Matrix<T, 7, 1>> t_j_frame(t_j_ptr);
-    Eigen::Map<const Eigen::Matrix<T, 7, 1>> t_i_frame(t_i_ptr);
-
-    Eigen::Map<Eigen::Matrix<T, 7, 1>> residuals(residuals_ptr);
-
-    Sophus::Sim3<T> Tj = Sophus::Sim3<T>::exp(t_j_frame);
-    Sophus::Sim3<T> Ti = Sophus::Sim3<T>::exp(t_i_frame);
-
-    residuals = (Tji_.template cast<T>() * Ti * Tj.inverse()).log();
-    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
-    return true;
-  }
-
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  static ceres::CostFunction* Create(
-      const Sophus::Sim3d& Tji, const Eigen::Matrix<double, 7, 7>& sqrt_information) {
-    return new ceres::AutoDiffCostFunction<EssentialGraphErrorTerm,
-                                           /* residual numbers */ 7,
-                                           /* first optimize numbers */ 7,
-                                           /* second optimize numbers */ 7>(
-        new EssentialGraphErrorTerm(Tji, sqrt_information));
+    return new EssentialGraphErrorTerm(Tji, sqrt_information);
   }
 
  private:
@@ -405,7 +365,7 @@ class CeresOptimizer {
                           Eigen::Matrix3d& R12, Eigen::Vector3d& t12,
                           const float th2, const bool bFixScale);
 
-  void static SophusOptimizeEssentialGraph(
+  void static OptimizeEssentialGraph(
       Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
       const LoopClosing::KeyFrameAndSophusSim3& keyframes_non_corrected_sim3,
       const LoopClosing::KeyFrameAndSophusSim3& keyframes_corrected_sim3,

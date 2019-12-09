@@ -316,25 +316,13 @@ bool LoopClosing::ComputeSophusSim3() {
         Eigen::Matrix3d R = pSolver->GetEstimatedRotation();
         Eigen::Vector3d t = pSolver->GetEstimatedTranslation();
         double s = pSolver->GetEstimatedScale();
-        // LOG(INFO) << " sim3 before optimized s: " << s;
-        // LOG(INFO) << " sim3 before optimized R: \n" << R;
-        // LOG(INFO) << " sim3 before optimized t: \n" << t.transpose();
 
         matcher.SearchBySim3(current_keyframe_, keyframe, map_point_matches, s,
                              R, t, 7.5);
 
-        // g2o::Sim3 gScm(Converter::toMatrix3d(R), Converter::toVector3d(t),
-        // s); const int n_inliers =
-        //    Optimizer::OptimizeSim3(current_keyframe_, keyframe,
-        //                            map_point_matches, gScm, 10,
-        //                            is_fix_scale_);
-
         const int n_inliers = CeresOptimizer::OptimizeSim3(
             current_keyframe_, keyframe, map_point_matches, &s, R, t, 10,
             is_fix_scale_);
-        // LOG(INFO) << " sim3 optimized s: " << s;
-        // LOG(INFO) << " sim3 optimized R: \n" << R;
-        // LOG(INFO) << " sim3 optimized t: \n" << t.transpose();
 
         Sophus::Sim3d sophus_gScm(Sophus::RxSO3d(s, R), t);
 
@@ -450,11 +438,7 @@ void LoopClosing::CorrectLoop() {
   // KeyFrameAndSim3 corrected_sim3, non_corrected_sim3;
 
   KeyFrameAndSophusSim3 sophus_corrected_sim3, sophus_non_corrected_sim3;
-  Sophus::Sim3d sophus_sim3_Scw(
-      Sophus::RxSO3d(sophus_sim3_Scw_.scale(),
-                     sophus_sim3_Scw_.rotationMatrix()),
-      sophus_sim3_Scw_.translation());
-  sophus_corrected_sim3[current_keyframe_] = sophus_sim3_Scw;
+  sophus_corrected_sim3[current_keyframe_] = sophus_sim3_Scw_;
 
   Eigen::Matrix4d Twc = current_keyframe_->GetPoseInverse();
 
@@ -592,7 +576,7 @@ void LoopClosing::CorrectLoop() {
   }
 
   // Optimize graph
-  CeresOptimizer::SophusOptimizeEssentialGraph(
+  CeresOptimizer::OptimizeEssentialGraph(
       map_, matched_keyframe_, current_keyframe_, sophus_non_corrected_sim3,
       sophus_corrected_sim3, loop_connections, is_fix_scale_);
 
@@ -624,8 +608,6 @@ void LoopClosing::SearchAndFuse(const KeyFrameAndSophusSim3& CorrectedPosesMap) 
 
     Sophus::Sim3d Scw = mit->second;
     Eigen::Matrix4d eig_Scw = Scw.matrix();
-    // eig_Scw.block<3, 3>(0, 0) = Scw.scale() * Scw.rotationMatrix();
-    // eig_Scw.block<3, 1>(0, 3) = Scw.translation();
 
     vector<MapPoint*> replace_map_points(loop_map_points_.size(),
                                          static_cast<MapPoint*>(nullptr));

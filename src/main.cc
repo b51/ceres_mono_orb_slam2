@@ -119,5 +119,6 @@ int main(int argc, char* argv[]) {
 
   slam.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 
+  cv::waitKey(0);
   return 0;
 }
