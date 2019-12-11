@@ -57,7 +57,7 @@ class LoopClosing {
   typedef std::map<
       KeyFrame*, Sophus::Sim3d, std::less<KeyFrame*>,
       Eigen::aligned_allocator<std::pair<const KeyFrame*, Sophus::Sim3d> > >
-      KeyFrameAndSophusSim3;
+      KeyFrameAndSim3;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -97,11 +97,9 @@ class LoopClosing {
 
   bool DetectLoop();
 
-  // bool ComputeSim3();
-  bool ComputeSophusSim3();
+  bool ComputeSim3();
 
-  // void SearchAndFuse(const KeyFrameAndPose& CorrectedPosesMap);
-  void SearchAndFuse(const KeyFrameAndSophusSim3& CorrectedPosesMap);
+  void SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap);
 
   void CorrectLoop();
 

@@ -74,7 +74,7 @@ void LoopClosing::Run() {
       if (DetectLoop()) {
         // Compute similarity transformation [sR|t]
         // In the stereo/RGBD case s=1
-        if (ComputeSophusSim3()) {
+        if (ComputeSim3()) {
           // Perform loop fusion and pose graph optimization
           CorrectLoop();
         }
@@ -227,7 +227,7 @@ bool LoopClosing::DetectLoop() {
   return false;
 }
 
-bool LoopClosing::ComputeSophusSim3() {
+bool LoopClosing::ComputeSim3() {
   // For each consistent loop candidate we try to compute a Sim3
 
   const int n_initial_candidates = enough_consistent_candidates_.size();
@@ -295,7 +295,6 @@ bool LoopClosing::ComputeSophusSim3() {
 
       Sim3Solver* pSolver = sim3_solvers[i];
       Eigen::Matrix4d Scm = pSolver->iterate(5, is_no_more, is_inliers, n_inliers);
-      // LOG(INFO) << "Scm: \n" << Scm;
 
       // If Ransac reachs max. iterations discard keyframe
       if (is_no_more) {
@@ -320,11 +319,11 @@ bool LoopClosing::ComputeSophusSim3() {
         matcher.SearchBySim3(current_keyframe_, keyframe, map_point_matches, s,
                              R, t, 7.5);
 
-        const int n_inliers = CeresOptimizer::OptimizeSim3(
-            current_keyframe_, keyframe, map_point_matches, &s, R, t, 10,
-            is_fix_scale_);
+        Sophus::Sim3d gScm(Sophus::RxSO3d(s, R), t);
 
-        Sophus::Sim3d sophus_gScm(Sophus::RxSO3d(s, R), t);
+        const int n_inliers = CeresOptimizer::OptimizeSim3(
+            current_keyframe_, keyframe, map_point_matches, gScm, 10,
+            is_fix_scale_);
 
         // If optimization is succesful stop ransacs and continue
         if (n_inliers >= 20) {
@@ -333,7 +332,7 @@ bool LoopClosing::ComputeSophusSim3() {
           Sophus::Sim3d sophus_gSmw(
               Sophus::RxSO3d(1.0, keyframe->GetRotation()),
               keyframe->GetTranslation());
-          sophus_sim3_Scw_ = sophus_gScm * sophus_gSmw;
+          sophus_sim3_Scw_ = gScm * sophus_gSmw;
           Scw_ = sophus_sim3_Scw_.matrix();
 
           current_matched_map_points_ = map_point_matches;
@@ -343,7 +342,6 @@ bool LoopClosing::ComputeSophusSim3() {
     }
   }
 
-  // LOG(INFO) << " is matched? " << is_match;
   if (!is_match) {
     for (int i = 0; i < n_initial_candidates; i++)
       enough_consistent_candidates_[i]->SetErase();
@@ -384,7 +382,6 @@ bool LoopClosing::ComputeSophusSim3() {
     }
   }
 
-  // LOG(INFO) << "n_total_matches: " << n_total_matches;
   if (n_total_matches >= 40) {
     for (int i = 0; i < n_initial_candidates; i++) {
       if (enough_consistent_candidates_[i] != matched_keyframe_) {
@@ -437,7 +434,7 @@ void LoopClosing::CorrectLoop() {
 
   // KeyFrameAndSim3 corrected_sim3, non_corrected_sim3;
 
-  KeyFrameAndSophusSim3 sophus_corrected_sim3, sophus_non_corrected_sim3;
+  KeyFrameAndSim3 sophus_corrected_sim3, sophus_non_corrected_sim3;
   sophus_corrected_sim3[current_keyframe_] = sophus_sim3_Scw_;
 
   Eigen::Matrix4d Twc = current_keyframe_->GetPoseInverse();
@@ -599,7 +596,7 @@ void LoopClosing::CorrectLoop() {
   last_loop_keyframe_id_ = current_keyframe_->id_;
 }
 
-void LoopClosing::SearchAndFuse(const KeyFrameAndSophusSim3& CorrectedPosesMap) {
+void LoopClosing::SearchAndFuse(const KeyFrameAndSim3& CorrectedPosesMap) {
   ORBmatcher matcher(0.8);
 
   for (auto mit = CorrectedPosesMap.begin(), mend = CorrectedPosesMap.end();

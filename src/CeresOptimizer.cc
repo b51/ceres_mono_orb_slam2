@@ -26,12 +26,11 @@ bool Sim3Parameterization::Plus(const double* x,
                                 double* x_plus_delta) const {
   Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_x(x);
   Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_delta(delta);
-  Eigen::Matrix<double, 7, 1> updated;
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> updated(x_plus_delta);
 
   Sophus::Sim3d sim_x = Sophus::Sim3d::exp(lie_x);
   Sophus::Sim3d sim_delta = Sophus::Sim3d::exp(lie_delta);
-  updated = (sim_delta * sim_x).log();
-  for (int i = 0; i < 7; i++) x_plus_delta[i] = updated[i];
+  updated = (sim_x * sim_delta).log();
   return true;
 }
 
@@ -595,12 +594,9 @@ reoptimize:
 
 int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
                                  std::vector<MapPoint*>& matches12,
-                                 double* scale12, Eigen::Matrix3d& R12,
-                                 Eigen::Vector3d& t12, const float th2,
+                                 Sophus::Sim3d& S12, const float th2,
                                  const bool bFixScale) {
-  double _scale12 = *scale12;
-  Eigen::Quaterniond _q12(R12);
-  Eigen::Vector3d _t12 = t12;
+  Eigen::Matrix<double, 7, 1> sim12 = S12.log();
 
   Eigen::Matrix3d K1 = MatEigenConverter::MatToMatrix3d(keyframe_1->K_);
   Eigen::Matrix3d K2 = MatEigenConverter::MatToMatrix3d(keyframe_2->K_);
@@ -620,8 +616,8 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
   const double deltaHuber = sqrt(th2);
   ceres::Problem problem;
   ceres::LossFunction* loss_function = new ceres::HuberLoss(deltaHuber);
-  ceres::LocalParameterization* quaternion_local_parameterization =
-      new ceres::EigenQuaternionParameterization;
+  ceres::LocalParameterization* sim3_local_parameterization =
+      new Sim3Parameterization;
   ceres::Solver::Options options;
   options.max_num_iterations = 100;
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
@@ -660,10 +656,9 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
         // sT12 -> do_inverse = false;
         ceres::CostFunction* obs1_cost_function =
             Sim3ErrorTerm::Create(K1, obs1, P3D2c, invSigmaSquareInfo1, false);
-        problem.AddResidualBlock(obs1_cost_function, loss_function, _t12.data(),
-                                 _q12.coeffs().data(), &_scale12);
-        problem.SetParameterization(_q12.coeffs().data(),
-                                    quaternion_local_parameterization);
+        problem.AddResidualBlock(obs1_cost_function, loss_function,
+                                 sim12.data());
+        problem.SetParameterization(sim12.data(), sim3_local_parameterization);
 
         // Get observations in keyframe_2's pixel coordinate
         const cv::KeyPoint& keypoint_2 = keyframe_2->undistort_keypoints_[i2];
@@ -678,10 +673,9 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
         // sT21 = sT12.inverse() -> do_inverse = true;
         ceres::CostFunction* obs2_cost_function =
             Sim3ErrorTerm::Create(K2, obs2, P3D1c, invSigmaSquareInfo2, true);
-        problem.AddResidualBlock(obs2_cost_function, loss_function, _t12.data(),
-                                 _q12.coeffs().data(), &_scale12);
-        problem.SetParameterization(_q12.coeffs().data(),
-                                    quaternion_local_parameterization);
+        problem.AddResidualBlock(obs2_cost_function, loss_function,
+                                 sim12.data());
+        problem.SetParameterization(sim12.data(), sim3_local_parameterization);
         // push for outliers count
         obs1_list.emplace_back(obs1);
         inv_sigma_1_list.emplace_back(inv_sigma_1);
@@ -692,23 +686,25 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
       }
     }
   }  // end of for N loop
+
   ceres::Solve(options, &problem, &summary);
+
+  S12 = Sophus::Sim3d::exp(sim12);
 
   int n_bad = 0;
 
   while (!obs1_list.empty()) {
-    Eigen::Matrix3d sR12_for_check =
-        _scale12 * _q12.normalized().toRotationMatrix();
-    Eigen::Vector3d t12_for_check = _t12;
+    Eigen::Matrix3d sR12_for_check = S12.scale() * S12.rotationMatrix();
+    Eigen::Vector3d t12_for_check = S12.translation();
     Eigen::Quaterniond q12_for_check(sR12_for_check);
 
     bool is_outlier_12 = CheckOutlier(
         K1, obs1_list.front(), inv_sigma_1_list.front(), P3D2c_list.front(),
         t12_for_check, q12_for_check, deltaHuber * deltaHuber);
 
-    Eigen::Matrix3d sR21_for_check =
-        (1.0 / _scale12) * _q12.conjugate().toRotationMatrix();
-    Eigen::Vector3d t21_for_check = -(sR21_for_check * t12_for_check);
+    Sophus::Sim3d S21 = S12.inverse();
+    Eigen::Matrix3d sR21_for_check = S21.scale() * S21.rotationMatrix();
+    Eigen::Vector3d t21_for_check = S21.translation();
     Eigen::Quaterniond q21_for_check(sR21_for_check);
 
     bool is_outlier_21 = CheckOutlier(
@@ -729,17 +725,13 @@ int CeresOptimizer::OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
 
   if (n_correspondences - n_bad < 10) return 0;
 
-  R12 = _q12.normalized().toRotationMatrix();
-  t12 = _t12;
-  *scale12 = _scale12;
-
   return n_correspondences - n_bad;
 }
 
 void CeresOptimizer::OptimizeEssentialGraph(
     Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
-    const LoopClosing::KeyFrameAndSophusSim3& keyframes_non_corrected_sim3,
-    const LoopClosing::KeyFrameAndSophusSim3& keyframes_corrected_sim3,
+    const LoopClosing::KeyFrameAndSim3& keyframes_non_corrected_sim3,
+    const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
     const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
     const bool& is_fixed_scale) {
   ceres::Problem problem;
@@ -785,12 +777,10 @@ void CeresOptimizer::OptimizeEssentialGraph(
     }
     Scw_original_datas[id_i] = Scw_datas[id_i];
 
-    std::cout << id_i << " " <<  Scw_datas[id_i].transpose() << std::endl;
-
     problem.AddParameterBlock(Scw_datas[id_i].data(), 7,
                               sim3_local_parameterization);
     if (keyframe == loop_keyframe) {
-      LOG(INFO) << "constant keyframe: " << keyframe->id_;
+      // LOG(INFO) << "constant keyframe: " << keyframe->id_;
       problem.SetParameterBlockConstant(Scw_datas[id_i].data());
     }
   }  // end of all_keyframes loop
@@ -814,9 +804,6 @@ void CeresOptimizer::OptimizeEssentialGraph(
 
       const Sophus::Sim3d Sjw = Sophus::Sim3d::exp(Scw_datas[id_j]);
       const Sophus::Sim3d Sji = Sjw * Swi;
-
-      std::cout << "Sji: " << Sji.log().transpose()
-                << " " << id_j << " " << id_i << std::endl;
 
       ceres::CostFunction* cost_function =
           EssentialGraphErrorTerm::Create(Sji, sqrt_information);
@@ -854,9 +841,6 @@ void CeresOptimizer::OptimizeEssentialGraph(
       }
       Sophus::Sim3d Sji = Sjw * Swi;
 
-      std::cout << "Sji: " << Sji.log().transpose()
-                << " " << id_j << " " << id_i << std::endl;
-
       ceres::CostFunction* cost_function =
           EssentialGraphErrorTerm::Create(Sji, sqrt_information);
       problem.AddResidualBlock(cost_function, nullptr, Scw_datas[id_j].data(),
@@ -876,9 +860,6 @@ void CeresOptimizer::OptimizeEssentialGraph(
           Slw = Sophus::Sim3d::exp(Scw_datas[local_loop_keyframe->id_]);
         }
         Sophus::Sim3d Sli = Slw * Swi;
-
-        std::cout << "Sji: " << Sli.log().transpose()
-                  << " " << local_loop_keyframe->id_ << " " << id_i << std::endl;
 
         ceres::CostFunction* cost_function =
             EssentialGraphErrorTerm::Create(Sli, sqrt_information);
@@ -910,9 +891,6 @@ void CeresOptimizer::OptimizeEssentialGraph(
             Snw = Sophus::Sim3d::exp(Scw_datas[keyframe_n->id_]);
 
           Sophus::Sim3d Sni = Snw * Swi;
-
-          std::cout << "Sji: " << Sni.log().transpose() << " "
-                    << keyframe_n->id_ << " " << id_i << std::endl;
 
           ceres::CostFunction* cost_function =
               EssentialGraphErrorTerm::Create(Sni, sqrt_information);

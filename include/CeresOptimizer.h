@@ -165,7 +165,7 @@ class PoseErrorTerm {
   const Eigen::Matrix2d sqrt_information_;
 };
 
-class Sim3ErrorTerm {
+class Sim3ErrorTerm : public ceres::SizedCostFunction<2, 7> {
  public:
   Sim3ErrorTerm(const Eigen::Matrix3d& K, const Eigen::Vector2d& observation,
                 const Eigen::Vector3d& point_pose,
@@ -176,40 +176,58 @@ class Sim3ErrorTerm {
         sqrt_information_(sqrt_information),
         do_inverse_(do_inverse) {}
 
-  template <typename T>
-  bool operator()(const T* const p_a_ptr, const T* const q_a_ptr,
-                  const T* const scale_ptr, T* residuals_ptr) const {
-    Eigen::Map<const Eigen::Matrix<T, 3, 1>> p_frame(p_a_ptr);
-    Eigen::Map<const Eigen::Quaternion<T>> q_frame(q_a_ptr);
+  virtual bool Evaluate(double const* const* parameters_ptr, double* residuals_ptr,
+                        double** jacobians_ptr) const {
+    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie(*parameters_ptr);
+    Sophus::Sim3d S = Sophus::Sim3d::exp(lie);
     // Compute the map point pose in camera frame.
-    Eigen::Matrix<T, 3, 1> projected;
-    Eigen::Matrix<T, 3, 1> p_cp;
-    if (!do_inverse_) {
-      Eigen::Matrix<T, 3, 3> scaled_R_frame =
-          scale_ptr[0] * q_frame.normalized().toRotationMatrix();
-      Eigen::Quaternion<T> scaled_q_frame(scaled_R_frame);
-      p_cp = scaled_q_frame * point_pose_.template cast<T>() + p_frame;
-    } else {
-      Eigen::Matrix<T, 3, 3> scaled_inverse_R_frame =
-          (T(1) / scale_ptr[0]) * q_frame.conjugate().toRotationMatrix();
-      Eigen::Quaternion<T> scaled_inverse_q_frame(scaled_inverse_R_frame);
-      Eigen::Matrix<T, 3, 1> inverse_p_frame =
-          -(scaled_inverse_q_frame * p_frame);
-      p_cp = scaled_inverse_q_frame * point_pose_.template cast<T>() +
-             inverse_p_frame;
-    }
+    Eigen::Matrix<double, 3, 1> projected;
+    Eigen::Matrix<double, 3, 1> p_cp;
+
+    if (!do_inverse_)
+      p_cp = S * point_pose_;
+    else
+      p_cp = S.inverse() * point_pose_;
+
     // Compute the map point pose in pixel frame.
     projected = K_ * p_cp;
 
     // Compute the residuals.
     // [ undistorted - projected ]
-    Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(residuals_ptr);
-    residuals[0] =
-        observation_.template cast<T>()[0] - projected[0] / projected[2];
-    residuals[1] =
-        observation_.template cast<T>()[1] - projected[1] / projected[2];
+    Eigen::Map<Eigen::Matrix<double, 2, 1>> residuals(residuals_ptr);
+    residuals[0] = projected[0] / projected[2] - observation_[0];
+    residuals[1] = projected[1] / projected[2] - observation_[1];
     // Scale the residuals by the measurement uncertainty.
-    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
+    residuals.applyOnTheLeft(sqrt_information_);
+
+    // left_pertubation Reference: https://www.cnblogs.com/gaoxiang12/p/5689927.html
+    Eigen::Matrix<double, 3, 7> left_pertubation =
+        Eigen::Matrix<double, 3, 7>::Zero();
+    left_pertubation.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+    left_pertubation.block<3, 3>(0, 3) = -Sophus::SO3d::hat(p_cp);
+    left_pertubation.block<3, 1>(0, 6) = p_cp;
+
+    double fx = K_(0, 0);
+    double fy = K_(1, 1);
+    double X = p_cp[0];
+    double Y = p_cp[1];
+    double Z = p_cp[2];
+    double Z_2 = Z * Z;
+    Eigen::Matrix<double, 2, 3> J_camera;
+    J_camera << fx / Z, 0., -X * fx / Z_2, 0, fy / Z, -fy * Y / Z_2;
+
+    Eigen::Matrix<double, 2, 7> Jacobian = J_camera * left_pertubation;
+    Jacobian = sqrt_information_ * Jacobian;
+
+    int k = 0;
+    if (jacobians_ptr && jacobians_ptr[0]) {
+      for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 7; j++) {
+          jacobians_ptr[0][k] = Jacobian(i, j);
+          k++;
+        }
+      }
+    }
     return true;
   }
 
@@ -218,13 +236,8 @@ class Sim3ErrorTerm {
                                      const Eigen::Vector3d& point_pose,
                                      const Eigen::Matrix2d& sqrt_information,
                                      const bool do_inverse) {
-    return new ceres::AutoDiffCostFunction<Sim3ErrorTerm,
-                                           /* residual numbers */ 2,
-                                           /* first optimize numbers */ 3,
-                                           /* second optimize numbers */ 4,
-                                           /* third optimize numbers */ 1>(
-        new Sim3ErrorTerm(K, observation, point_pose, sqrt_information,
-                          do_inverse));
+    return new Sim3ErrorTerm(K, observation, point_pose, sqrt_information,
+                             do_inverse);
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -239,7 +252,6 @@ class Sim3ErrorTerm {
   const bool do_inverse_;
 };
 
-// theta) part.
 class CERES_EXPORT Sim3Parameterization : public ceres::LocalParameterization {
  public:
   virtual ~Sim3Parameterization() {}
@@ -251,64 +263,67 @@ class CERES_EXPORT Sim3Parameterization : public ceres::LocalParameterization {
   int LocalSize() const { return 7; }
 };
 
+/**
+ *  Sim3 Jacobian Calculation Reference:
+ *  https://github.com/b51/CeresSim3Optimize.git
+ *  <num residuals 7, parameters 1 num 7, parameters 2 num 7>
+ */
 class EssentialGraphErrorTerm : public ceres::SizedCostFunction<7, 7, 7> {
  public:
   EssentialGraphErrorTerm(
-      const Sophus::Sim3d& Tji,
+      const Sophus::Sim3d& Sji,
       const Eigen::Matrix<double, 7, 7>& sqrt_information)
-      : Tji_(Tji), sqrt_information_(sqrt_information) {}
+      : Sji_(Sji), sqrt_information_(sqrt_information) {}
 
-  virtual bool Evaluate(double const* const* parameters, double* residuals,
-                        double** jacobians) const {
-    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie_j(*parameters);
-    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie_i(*(parameters + 1));
+  virtual bool Evaluate(double const* const* parameters_ptr,
+                        double* residuals_ptr, double** jacobians_ptr) const {
+    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie_j(*parameters_ptr);
+    Eigen::Map<const Eigen::Matrix<double, 7, 1>> lie_i(*(parameters_ptr + 1));
 
-    Sophus::Sim3d T_i = Sophus::Sim3d::exp(lie_i);
-    Sophus::Sim3d T_j = Sophus::Sim3d::exp(lie_j);
-    Sophus::Sim3d Tij_estimate = T_i * T_j.inverse();
-    Sophus::Sim3d err = Tij_estimate * Tji_;
-    Eigen::Matrix<double, 7, 1> err_;
-    err_ = err.log();
+    Sophus::Sim3d Si = Sophus::Sim3d::exp(lie_i);
+    Sophus::Sim3d Sj = Sophus::Sim3d::exp(lie_j);
+    Sophus::Sim3d error = Sji_ * Si * Sj.inverse();
+    Eigen::Map<Eigen::Matrix<double, 7, 1>> residuals(residuals_ptr);
+    residuals = error.log();
 
-    Eigen::Matrix<double, 7, 7> Jac_i;
-    Eigen::Matrix<double, 7, 7> Jac_j;
-    Eigen::Matrix<double, 7, 7> Jl = Eigen::Matrix<double, 7, 7>::Zero();
+    if (jacobians_ptr) {
+      Eigen::Matrix<double, 7, 7> Jacobian_i;
+      Eigen::Matrix<double, 7, 7> Jacobian_j;
+      Eigen::Matrix<double, 7, 7> Jr = Eigen::Matrix<double, 7, 7>::Zero();
 
-    Jl.block<3, 3>(0, 0) = Sophus::RxSO3d::hat(err_.tail(4));
-    Jl.block<3, 3>(0, 3) = Sophus::SO3d::hat(err_.head(3));
-    Jl.block<3, 1>(0, 6) = -err_.head(3);
-    Jl.block<3, 3>(3, 3) = Sophus::SO3d::hat(err_.block<3, 1>(3, 0));
-    Eigen::Matrix<double, 7, 7> I = Eigen::Matrix<double, 7, 7>::Identity();
-    Jl.noalias() = sqrt_information_ * (I - 0.5 * Jl + 1.0 / 12. * (Jl * Jl));
+      Jr.block<3, 3>(0, 0) = Sophus::RxSO3d::hat(residuals.tail(4));
+      Jr.block<3, 3>(0, 3) = Sophus::SO3d::hat(residuals.head(3));
+      Jr.block<3, 1>(0, 6) = -residuals.head(3);
+      Jr.block<3, 3>(3, 3) = Sophus::SO3d::hat(residuals.block<3, 1>(3, 0));
+      Eigen::Matrix<double, 7, 7> I = Eigen::Matrix<double, 7, 7>::Identity();
+      Jr = sqrt_information_ * (I + 0.5 * Jr + 1.0 / 12. * (Jr * Jr));
 
-    err_ = sqrt_information_ * err_;
-
-    Jac_i = Jl;
-    Jac_j = -Jl * Tij_estimate.Adj();
-    int k = 0;
-    for (int i = 0; i < 7; i++) {
-      residuals[i] = err_[i];
-      if (jacobians) {
+      Jacobian_i = Jr * Sj.Adj();
+      Jacobian_j = -Jacobian_i;
+      int k = 0;
+      for (int i = 0; i < 7; i++) {
         for (int j = 0; j < 7; ++j) {
-          if (jacobians[0]) jacobians[0][k] = Jac_j(i, j);
-          if (jacobians[1]) jacobians[1][k] = Jac_i(i, j);
+          if (jacobians_ptr[0]) jacobians_ptr[0][k] = Jacobian_j(i, j);
+          if (jacobians_ptr[1]) jacobians_ptr[1][k] = Jacobian_i(i, j);
           k++;
         }
       }
     }
+
+    residuals = sqrt_information_ * residuals;
     return true;
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   static ceres::CostFunction* Create(
-      const Sophus::Sim3d& Tji,
+      const Sophus::Sim3d& Sji,
       const Eigen::Matrix<double, 7, 7>& sqrt_information) {
-    return new EssentialGraphErrorTerm(Tji, sqrt_information);
+    return new EssentialGraphErrorTerm(Sji, sqrt_information);
   }
 
  private:
-  const Sophus::Sim3d Tji_;
+  const Sophus::Sim3d Sji_;
   const Eigen::Matrix<double, 7, 7> sqrt_information_;
 };
 
@@ -361,14 +376,13 @@ class CeresOptimizer {
   int static PoseOptimization(Frame* frame);
 
   int static OptimizeSim3(KeyFrame* keyframe_1, KeyFrame* keyframe_2,
-                          std::vector<MapPoint*>& matches, double* scale12,
-                          Eigen::Matrix3d& R12, Eigen::Vector3d& t12,
+                          std::vector<MapPoint*>& matches, Sophus::Sim3d& S12,
                           const float th2, const bool bFixScale);
 
   void static OptimizeEssentialGraph(
       Map* map, KeyFrame* loop_keyframe, KeyFrame* current_keyframe,
-      const LoopClosing::KeyFrameAndSophusSim3& keyframes_non_corrected_sim3,
-      const LoopClosing::KeyFrameAndSophusSim3& keyframes_corrected_sim3,
+      const LoopClosing::KeyFrameAndSim3& keyframes_non_corrected_sim3,
+      const LoopClosing::KeyFrameAndSim3& keyframes_corrected_sim3,
       const std::map<KeyFrame*, std::set<KeyFrame*>>& loop_connections,
       const bool& is_fixed_scale);
 };

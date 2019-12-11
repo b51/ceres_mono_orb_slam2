@@ -5,7 +5,6 @@
 2. Remove g2o from ORB-SLAM2 and use ceres solver instead to get rid of annoying warnings
 3. Use Eigen::Matrix instead of cv::Mat for matrix calculation
 4. Tested on rgbd_dataset_freiburg2_desk and rgbd_dataset_freiburg2_360_kidnap
-5. Has some bugs and may fix in the future
 
 ## Usage
 **PreInstall**
@@ -41,10 +40,13 @@ $ ./mono_slam --voc path/to/ORBvoc.txt --config path/to/configs/config.yaml --im
   - [X] Fix CeresOptimizer, sometimes get "Matrix not positive definite" warning
   - [X] Fix Relocalization, sometimes may get stuck
   - [X] Fix LocalBundleAdjustment with add inv sigma to error calculation
-  - [ ] EssentialGraph in CeresOptimizer need to fix
+  - [X] EssentialGraph in CeresOptimizer need to fix
   - [ ] Reconstruct to make code modular, at least make feature matcher as an independent module
   - [ ] Add IMU data to get scale information
   - [ ] Add map save for map reusing
+
+## Sim3 Error and Jacobian Calculation
+**Reference: https://github.com/b51/CeresSim3Optimize**
 
 
 # ORB-SLAM2
