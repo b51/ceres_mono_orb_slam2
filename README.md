@@ -83,7 +83,7 @@ $$\mathbf{[x, y] = [\begin{bmatrix} \nu \newline \omega \newline \sigma\end{bmat
 $$\mathbf{= \begin{bmatrix}(\hat{\omega} + \sigma I)\tau + \nu \times \varphi - \varsigma\nu \newline \omega \times \varphi \newline  0 \end{bmatrix}}$$
 $$\hspace{-4cm} = \mathbf{adj(x) y}$$
 
-We can get $\hspace{4cm}\mathbf{\xi^{\lambda} = adj(\xi) = \begin{bmatrix} (\hat{\omega} + \sigma I) & \hat{\nu} & -{\nu} \newline 0 & \hat{\varphi} & 0 \newline 0 & 0 & 0 \end{bmatrix}}$
+We can get $\hspace{4cm}\mathbf{\xi^{\lambda} = adj(\xi) = \begin{bmatrix} (\hat{\omega} + \sigma I) & \hat{\nu} & -{\nu} \newline 0 & \hat{\omega} & 0 \newline 0 & 0 & 0 \end{bmatrix}}$
 
 ### Left multiplication/Right multiplication for pose update
 sim(3) update with **Left multiplication/Right multiplication** has affect on Jacobian calculation, Formula derivation below used Right multiplication as example
