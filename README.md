@@ -4,7 +4,7 @@
 1. Only for mono camera slam
 2. Remove g2o from ORB-SLAM2 and use ceres solver instead to get rid of annoying warnings
 3. Use Eigen::Matrix instead of cv::Mat for matrix calculation
-4. Tested on rgbd_dataset_freiburg2_desk and rgbd_dataset_freiburg2_360_kidnap
+4. Tested on rgbd_dataset_freiburg2_desk, rgbd_dataset_freiburg2_360_kidnap and kitti
 
 ## Usage
 **PreInstall**
@@ -26,10 +26,10 @@ $ cmake .. && make -j4
 **Run**
 ```bash
 $ cd ceres_mono_orb_slam2
-$ wget https://raw.githubusercontent.com/raulmur/ORB_SLAM2/master/Vocabulary/ORBvoc.txt.tar.gz
+$ cd vocabulary
 $ tar zxvf ORBvoc.txt.tar.gz
-$ cd build
-$ ./mono_slam --voc path/to/ORBvoc.txt --config path/to/configs/config.yaml --images path/to/rgbd_dataset_freiburg2_desk
+$ cd ../build
+$ ./mono_slam --voc ../vocabulary/ORBvoc.txt --config ../configs/KITTI00-02.yaml --images path/to/kitti_images
 ```
 
 ## TODO
