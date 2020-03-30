@@ -27,6 +27,7 @@
 #include "ORBVocabulary.h"
 #include "Tracking.h"
 #include "Viewer.h"
+#include "MatEigenConverter.h"
 
 namespace ORB_SLAM2 {
 
@@ -75,7 +76,7 @@ class MonoORBSlam {
   void SaveKeyFrameTrajectoryTUM(const string& filename);
 
   // TODO: Save/Load functions
-  // SaveMap(const string &filename);
+  void SaveMap(const string &filename);
   // LoadMap(const string &filename);
 
   // Information from most recent processed frame

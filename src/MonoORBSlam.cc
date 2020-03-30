@@ -191,6 +191,61 @@ void MonoORBSlam::SaveTrajectoryTUM(const string& filename) {
   return;
 }
 
+void MonoORBSlam::SaveMap(const string& filename) {
+  LOG(INFO) << "Saving map to " << filename << "...";
+
+  cv::FileStorage f(filename, cv::FileStorage::WRITE);
+
+  LOG(INFO) << "Saving map points" << "...";
+  f << "MapPoints" << "[";
+
+  std::vector<MapPoint*> map_points = map_->GetAllMapPoints();
+  sort(map_points.begin(), map_points.end(), MapPoint::lId);
+  for (const auto& map_point : map_points) {
+    if (map_point->isBad())
+      continue;
+    cv::Mat pos = MatEigenConverter::Vector3dToMat(map_point->GetWorldPos());
+    f << "{:"
+      << "id" << std::to_string(map_point->id_)
+      << "pos" << pos
+      << "descriptor" << map_point->GetDescriptor()
+      << "}";
+  }
+  f << "]";
+  LOG(INFO) << "map points saved!";
+
+  LOG(INFO) << "Saving keyframes " << filename << " ...";
+  std::vector<KeyFrame*> keyframes = map_->GetAllKeyFrames();
+  sort(keyframes.begin(), keyframes.end(), KeyFrame::lId);
+  f << "KeyFrames" << "[";
+  for (const auto& keyframe : keyframes) {
+    if (keyframe->isBad())
+      continue;
+    cv::Mat R =
+        MatEigenConverter::Matrix3dToMat(keyframe->GetRotation().transpose());
+    cv::Mat t = MatEigenConverter::Vector3dToMat(keyframe->GetCameraCenter());
+    std::set<MapPoint*> map_point_set = keyframe->GetMapPoints();
+    cv::Mat map_point_indices(1, map_point_set.size(), CV_32F);
+    int count = 0;
+    for (auto it = map_point_set.begin(); it != map_point_set.end(); it++) {
+      map_point_indices.at<float>(0, count) = (*it)->id_;
+      count++;
+    }
+
+    f << "{:"
+      << "id" << std::to_string(keyframe->id_)
+      << "timestamp" << keyframe->timestamp_
+      << "R" << R
+      << "t" << t
+      << "map_point indices" << map_point_indices
+      << "}";
+  }
+  f << "]";
+
+  f.release();
+  LOG(INFO) << "Map saved!";
+}
+
 void MonoORBSlam::SaveKeyFrameTrajectoryTUM(const string& filename) {
   LOG(INFO) << "Saving keyframe trajectory to " << filename << " ...";
 

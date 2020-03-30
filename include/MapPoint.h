@@ -88,6 +88,10 @@ class MapPoint {
   int PredictScale(const float& currentDist, KeyFrame* keyframe);
   int PredictScale(const float& currentDist, Frame* pF);
 
+  static bool lId(MapPoint* map_point_1, MapPoint* map_point_2) {
+    return map_point_1->id_ < map_point_2->id_;
+  }
+
  public:
   long unsigned int id_;
   static long unsigned int next_id_;

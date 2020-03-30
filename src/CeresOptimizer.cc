@@ -25,8 +25,14 @@ bool Sim3Parameterization::Plus(const double* x,
                                 const double* delta,
                                 double* x_plus_delta) const {
   Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_x(x);
-  Eigen::Map<const Eigen::Matrix<double, 7, 1> > lie_delta(delta);
+  Eigen::Matrix<double, 7, 1> lie_delta;
   Eigen::Map<Eigen::Matrix<double, 7, 1>> updated(x_plus_delta);
+
+  for (int i = 0; i < 7; i++) {
+    lie_delta[i] = delta[i];
+  }
+  // make sure scale not too small, exp(scale) > 1e-5
+  lie_delta[6] = std::max(lie_delta[6], -20.);
 
   Sophus::Sim3d sim_x = Sophus::Sim3d::exp(lie_x);
   Sophus::Sim3d sim_delta = Sophus::Sim3d::exp(lie_delta);

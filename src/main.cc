@@ -118,6 +118,7 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "mean tracking time: " << total_time / n_images;
 
   slam.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
+  slam.SaveMap("map.yaml");
 
   cv::waitKey(0);
   return 0;
