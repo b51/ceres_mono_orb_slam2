@@ -1,3 +1,5 @@
+
+
 # Mono Camera ORB-SLAM2 with ceres solver optimizer
 
 ## What this repository for?
@@ -10,6 +12,10 @@
 **PreInstall**
 
 [Install ceres_solver](http://www.ceres-solver.org/installation.html)
+
+[Install glog](https://github.com/google/glog)
+
+[Install sophus](https://github.com/strasdat/Sophus)
 
 [Install Pangolin](https://github.com/stevenlovegrove/Pangolin)
 
@@ -321,5 +327,4 @@ You can change between the *SLAM* and *Localization mode* using the GUI of the m
 This is the default mode. The system runs in parallal three threads: Tracking, Local Mapping and Loop Closing. The system localizes the camera, builds new map and tries to close loops.
 
 ### Localization Mode
-This mode can be used when you have a good map of your working area. In this mode the Local Mapping and Loop Closing are deactivated. The system localizes the camera in the map (which is no longer updated), using relocalization if needed. 
-
+This mode can be used when you have a good map of your working area. In this mode the Local Mapping and Loop Closing are deactivated. The system localizes the camera in the map (which is no longer updated), using relocalization if needed.
